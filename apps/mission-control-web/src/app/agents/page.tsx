@@ -7,10 +7,23 @@ export default async function AgentsPage() {
 
   return (
     <section>
-      <h1>Agents</h1>
-      <small>
-        API {payload.apiVersion} · {payload.agents.length} agents · {payload.sessions.length} sessions
-      </small>
+      <div className="page-head">
+        <h1>Agent Grid</h1>
+        <small>
+          {payload.agents.length} agents · {payload.sessions.length} sessions
+        </small>
+      </div>
+
+      <div className="grid" style={{ marginBottom: 12 }}>
+        <article className="kpi">
+          <h3>Registered</h3>
+          <div className="value">{payload.agents.length}</div>
+        </article>
+        <article className="kpi">
+          <h3>Sessions</h3>
+          <div className="value">{payload.sessions.length}</div>
+        </article>
+      </div>
 
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Registered Agents</h2>
@@ -29,7 +42,9 @@ export default async function AgentsPage() {
                 <tr key={agent.agentId}>
                   <td>{agent.agentId}</td>
                   <td>{agent.role ?? '—'}</td>
-                  <td>{agent.configured ? 'yes' : 'no'}</td>
+                  <td>
+                    <span className={agent.configured ? 'pill ok' : 'pill warn'}>{agent.configured ? 'yes' : 'no'}</span>
+                  </td>
                   <td>{new Date(agent.updatedAt).toLocaleString()}</td>
                 </tr>
               ))}
@@ -47,7 +62,7 @@ export default async function AgentsPage() {
                 <th>Session</th>
                 <th>Label</th>
                 <th>Status</th>
-                <th>Runtime</th>
+                <th>Runtime (ms)</th>
                 <th>Model</th>
               </tr>
             </thead>
@@ -56,7 +71,9 @@ export default async function AgentsPage() {
                 <tr key={session.sessionKey}>
                   <td>{session.sessionKey}</td>
                   <td>{session.label}</td>
-                  <td>{session.status}</td>
+                  <td>
+                    <span className={session.status === 'active' ? 'pill ok' : 'pill'}>{session.status}</span>
+                  </td>
                   <td>{session.runtimeMs ?? '—'}</td>
                   <td>{session.model ?? '—'}</td>
                 </tr>
