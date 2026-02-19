@@ -258,6 +258,46 @@ th {
 .markdown-body h3 { margin: 8px 0; }
 .markdown-body p, .markdown-body li { line-height: 1.5; }
 
+.memory-list {
+  display: grid;
+  gap: 10px;
+}
+
+.memory-item {
+  border: 1px solid #2c4d84;
+  border-radius: 12px;
+  background: #09142c;
+  padding: 12px;
+}
+
+.memory-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.memory-item-head code {
+  color: #c5ddff;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.memory-meta {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.memory-item p {
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
 @media (max-width: 1024px) {
   .kpi { grid-column: span 4; }
   .split-main, .split-side { grid-column: span 12; }

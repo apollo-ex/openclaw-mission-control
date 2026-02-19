@@ -27,31 +27,20 @@ export default async function MemoryPage() {
 
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Memory Registry</h2>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Path</th>
-                <th>Kind</th>
-                <th>Updated</th>
-                <th>Redacted</th>
-                <th>Summary</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payload.docs.map((doc) => (
-                <tr key={doc.path}>
-                  <td>{doc.path}</td>
-                  <td>{doc.kind}</td>
-                  <td>{new Date(doc.updatedAt).toLocaleString()}</td>
-                  <td>
-                    <span className={doc.redacted ? 'pill warn' : 'pill ok'}>{doc.redacted ? 'yes' : 'no'}</span>
-                  </td>
-                  <td>{doc.summary}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="memory-list">
+          {payload.docs.map((doc) => (
+            <article key={doc.path} className="memory-item">
+              <div className="memory-item-head">
+                <code>{doc.path}</code>
+                <span className={doc.redacted ? 'pill warn' : 'pill ok'}>{doc.redacted ? 'redacted' : 'clean'}</span>
+              </div>
+              <div className="memory-meta">
+                <span>Kind: {doc.kind}</span>
+                <span>Updated: {new Date(doc.updatedAt).toLocaleString()}</span>
+              </div>
+              <p>{doc.summary}</p>
+            </article>
+          ))}
         </div>
       </div>
     </section>
