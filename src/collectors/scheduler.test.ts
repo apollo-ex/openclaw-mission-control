@@ -1,10 +1,6 @@
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openDatabase } from '../db/client.js';
-import { applyMigrations } from '../db/migrations.js';
+import { createTestDatabase } from '../db/test-utils.js';
 import { CadenceProfile } from './cadence.js';
 import { CollectorScheduler } from './scheduler.js';
 import type { Logger } from '../lib/logger.js';
@@ -21,13 +17,9 @@ const silentLogger = (): Logger => ({
 });
 
 test('CollectorScheduler marks stale on permanent failure', async () => {
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-scheduler-'));
-  const dbPath = path.join(tmpRoot, 'test.sqlite');
-  const db = openDatabase(dbPath);
+  const { db, close } = await createTestDatabase();
 
   try {
-    applyMigrations(db, path.resolve(process.cwd(), 'migrations'));
-
     const scheduler = new CollectorScheduler(
       { db, logger: silentLogger() },
       [
@@ -52,29 +44,27 @@ test('CollectorScheduler marks stale on permanent failure', async () => {
     scheduler.stop();
     await wait(25);
 
-    const state = db
-      .prepare('SELECT stale, error_count as errorCount FROM collector_state WHERE collector_name = ?')
-      .get('always_fails') as { stale: number; errorCount: number };
+    const result = await db.query<{ stale: boolean; error_count: number }>(
+      'SELECT stale, error_count FROM collector_state WHERE collector_name = $1',
+      ['always_fails']
+    );
 
-    assert.equal(state.stale, 1);
-    assert.equal(state.errorCount >= 1, true);
+    const state = result.rows[0];
+    assert.equal(state?.stale, true);
+    assert.equal((state?.error_count ?? 0) >= 1, true);
   } finally {
-    db.close();
+    await close();
   }
 });
 
 test('CollectorScheduler marks success and ignores overlapping executions', async () => {
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-scheduler-success-'));
-  const dbPath = path.join(tmpRoot, 'test.sqlite');
-  const db = openDatabase(dbPath);
+  const { db, close } = await createTestDatabase();
 
   let active = 0;
   let overlapAttempted = false;
   let runs = 0;
 
   try {
-    applyMigrations(db, path.resolve(process.cwd(), 'migrations'));
-
     const scheduler = new CollectorScheduler(
       { db, logger: silentLogger() },
       [
@@ -105,16 +95,18 @@ test('CollectorScheduler marks success and ignores overlapping executions', asyn
     scheduler.stop();
     await wait(60);
 
-    const state = db
-      .prepare('SELECT stale, error_count as errorCount, last_success_at as lastSuccessAt FROM collector_state WHERE collector_name = ?')
-      .get('eventually_succeeds') as { stale: number; errorCount: number; lastSuccessAt: string | null };
+    const result = await db.query<{ stale: boolean; error_count: number; last_success_at: string | null }>(
+      'SELECT stale, error_count, last_success_at FROM collector_state WHERE collector_name = $1',
+      ['eventually_succeeds']
+    );
 
+    const state = result.rows[0];
     assert.equal(runs >= 2, true);
     assert.equal(overlapAttempted, false);
-    assert.equal(state.stale, 0);
-    assert.equal(state.errorCount, 0);
-    assert.equal(Boolean(state.lastSuccessAt), true);
+    assert.equal(state?.stale, false);
+    assert.equal(state?.error_count, 0);
+    assert.equal(Boolean(state?.last_success_at), true);
   } finally {
-    db.close();
+    await close();
   }
 });

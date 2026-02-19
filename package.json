@@ -14,14 +14,18 @@
     "test:coverage": "node --import tsx --experimental-test-coverage --test-coverage-include=src/**/*.ts --test-coverage-exclude=src/**/*.test.ts --test-coverage-exclude=src/index.ts --test-coverage-exclude=src/cli/*.ts --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=80 --test \"src/**/*.test.ts\"",
     "test:ci": "npm run lint && npm run test:coverage && npm run build",
     "migrate": "node --import tsx src/cli/migrate.ts",
-    "seed": "node --import tsx src/cli/seed.ts"
+    "seed": "node --import tsx src/cli/seed.ts",
+    "verify:db:local": "node scripts/verify-local-postgres.mjs"
   },
   "engines": {
     "node": ">=22"
   },
-  "dependencies": {},
+  "dependencies": {
+    "pg": "^8.18.0"
+  },
   "devDependencies": {
     "@types/node": "^24.5.2",
+    "@types/pg": "^8.16.0",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }

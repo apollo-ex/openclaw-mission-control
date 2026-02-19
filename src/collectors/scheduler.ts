@@ -60,10 +60,10 @@ export class CollectorScheduler {
 
     try {
       await this.runWithRetries(task);
-      markCollectorSuccess(this.context.db, task.name);
+      await markCollectorSuccess(this.context.db, task.name);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      markCollectorFailure(this.context.db, task.name, message, true);
+      await markCollectorFailure(this.context.db, task.name, message, true);
       this.logger.error('collector_failed_permanently', {
         collector: task.name,
         error: message
@@ -82,7 +82,7 @@ export class CollectorScheduler {
         const message = error instanceof Error ? error.message : String(error);
         const isLastAttempt = attempt >= this.config.maxRetries;
 
-        markCollectorFailure(this.context.db, task.name, message, isLastAttempt);
+        await markCollectorFailure(this.context.db, task.name, message, isLastAttempt);
 
         this.logger.warn('collector_retry', {
           collector: task.name,
@@ -96,10 +96,7 @@ export class CollectorScheduler {
           throw error;
         }
 
-        const delay = Math.min(
-          this.config.backoffBaseMs * Math.pow(2, attempt),
-          this.config.backoffMaxMs
-        );
+        const delay = Math.min(this.config.backoffBaseMs * Math.pow(2, attempt), this.config.backoffMaxMs);
         await sleep(delay);
       }
     }

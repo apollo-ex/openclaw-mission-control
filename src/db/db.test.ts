@@ -3,34 +3,21 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openDatabase } from './client.js';
+import { Pool } from 'pg';
+import { createTestDatabase } from './test-utils.js';
 import { applyMigrations } from './migrations.js';
 import { seedDatabase } from './seed.js';
 import { appendEvent, upsertSessions, upsertSourceSnapshot } from './upserts.js';
 
-const createTestDb = async () => {
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-db-'));
-  const dbPath = path.join(tmpRoot, 'test.sqlite');
-  const migrationsDir = path.resolve(process.cwd(), 'migrations');
-  const db = openDatabase(dbPath);
-  applyMigrations(db, migrationsDir);
-  return { db, tmpRoot, dbPath, migrationsDir };
-};
-
 test('migrations apply and re-run safely', async () => {
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-db-'));
-  const dbPath = path.join(tmpRoot, 'test.sqlite');
-  const migrationsDir = path.resolve(process.cwd(), 'migrations');
+  const { db, close } = await createTestDatabase();
 
-  const db = openDatabase(dbPath);
   try {
-    const first = applyMigrations(db, migrationsDir);
-    const second = applyMigrations(db, migrationsDir);
-
-    assert.equal(first.applied.length >= 1, true);
+    const second = await applyMigrations(db, path.resolve(process.cwd(), 'migrations'));
     assert.equal(second.applied.length, 0);
+    assert.equal(second.skipped.length >= 1, true);
   } finally {
-    db.close();
+    await close();
   }
 });
 
@@ -42,25 +29,24 @@ test('migration checksum mismatch is detected', async () => {
   const migrationPath = path.join(migrationsDir, '001_test.sql');
   await fs.writeFile(migrationPath, 'CREATE TABLE test_table (id TEXT PRIMARY KEY);\n');
 
-  const dbPath = path.join(tmpRoot, 'test.sqlite');
-  const db = openDatabase(dbPath);
+  const { db, close } = await createTestDatabase();
 
   try {
-    applyMigrations(db, migrationsDir);
+    await applyMigrations(db, migrationsDir);
 
     await fs.writeFile(migrationPath, 'CREATE TABLE test_table (id TEXT PRIMARY KEY, name TEXT);\n');
 
-    assert.throws(() => applyMigrations(db, migrationsDir), /Migration checksum mismatch/);
+    await assert.rejects(() => applyMigrations(db, migrationsDir), /Migration checksum mismatch/);
   } finally {
-    db.close();
+    await close();
   }
 });
 
 test('session upsert is idempotent on primary key', async () => {
-  const { db } = await createTestDb();
+  const { db, close } = await createTestDatabase();
 
   try {
-    const snapshotId = upsertSourceSnapshot(db, {
+    const snapshotId = await upsertSourceSnapshot(db, {
       sourceType: 'sessions',
       capturedAt: new Date().toISOString(),
       payloadHash: 'hash',
@@ -74,7 +60,7 @@ test('session upsert is idempotent on primary key', async () => {
       }
     });
 
-    upsertSessions(
+    await upsertSessions(
       db,
       [
         {
@@ -91,7 +77,7 @@ test('session upsert is idempotent on primary key', async () => {
       snapshotId
     );
 
-    upsertSessions(
+    await upsertSessions(
       db,
       [
         {
@@ -108,42 +94,45 @@ test('session upsert is idempotent on primary key', async () => {
       snapshotId
     );
 
-    const row = db
-      .prepare('SELECT session_key as sessionKey, label, status FROM sessions WHERE session_key = ?')
-      .get('s-1') as { sessionKey: string; label: string; status: string };
+    const rowResult = await db.query<{ sessionkey: string; label: string; status: string }>(
+      'SELECT session_key AS sessionKey, label, status FROM sessions WHERE session_key = $1',
+      ['s-1']
+    );
 
-    assert.equal(row.sessionKey, 's-1');
-    assert.equal(row.label, 'one-updated');
-    assert.equal(row.status, 'recent');
+    const row = rowResult.rows[0];
+    assert.equal(row?.sessionkey, 's-1');
+    assert.equal(row?.label, 'one-updated');
+    assert.equal(row?.status, 'recent');
 
-    const count = db.prepare('SELECT COUNT(*) as count FROM sessions').get() as { count: number };
-    assert.equal(count.count, 1);
+    const countResult = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM sessions');
+    assert.equal(Number(countResult.rows[0]?.count ?? 0), 1);
   } finally {
-    db.close();
+    await close();
   }
 });
 
 test('seedDatabase is safe to re-run', async () => {
-  const { db } = await createTestDb();
+  const { db, close } = await createTestDatabase();
 
   try {
-    seedDatabase(db);
-    seedDatabase(db);
+    await seedDatabase(db);
+    await seedDatabase(db);
 
-    const agents = db.prepare('SELECT COUNT(*) as count FROM agents').get() as { count: number };
-    const collector = db
-      .prepare('SELECT collector_name as collectorName FROM collector_state WHERE collector_name = ?')
-      .get('sessions_hot') as { collectorName: string };
+    const agentsResult = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM agents');
+    const collectorResult = await db.query<{ collector_name: string }>(
+      'SELECT collector_name FROM collector_state WHERE collector_name = $1',
+      ['sessions_hot']
+    );
 
-    assert.equal(agents.count, 1);
-    assert.equal(collector.collectorName, 'sessions_hot');
+    assert.equal(Number(agentsResult.rows[0]?.count ?? 0), 1);
+    assert.equal(collectorResult.rows[0]?.collector_name, 'sessions_hot');
   } finally {
-    db.close();
+    await close();
   }
 });
 
 test('appendEvent deduplicates by idempotency key', async () => {
-  const { db } = await createTestDb();
+  const { db, close } = await createTestDatabase();
 
   try {
     const payload = {
@@ -155,12 +144,12 @@ test('appendEvent deduplicates by idempotency key', async () => {
       sourceRef: 'openclaw gateway status'
     };
 
-    appendEvent(db, payload);
-    appendEvent(db, payload);
+    await appendEvent(db, payload);
+    await appendEvent(db, payload);
 
-    const count = db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number };
-    assert.equal(count.count, 1);
+    const countResult = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM events');
+    assert.equal(Number(countResult.rows[0]?.count ?? 0), 1);
   } finally {
-    db.close();
+    await close();
   }
 });

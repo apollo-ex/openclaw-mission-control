@@ -1,9 +1,9 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { DbExecutor } from '../db/types.js';
 import type { Logger } from '../lib/logger.js';
 import type { CadenceProfile } from './cadence.js';
 
 export interface CollectorContext {
-  db: DatabaseSync;
+  db: DbExecutor;
   logger: Logger;
 }
 

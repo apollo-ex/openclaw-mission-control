@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
 import type { CronJobRecord, CronRunRecord, MemoryDocRecord, SessionRecord, SourceMetadata, StatusSnapshot } from '../adapters/types.js';
 import type { RedactionResult } from '../security/redaction.js';
+import type { DbExecutor } from './types.js';
 
 const makeId = (prefix: string): string => `${prefix}_${crypto.randomUUID()}`;
 
@@ -15,19 +15,17 @@ export interface SourceSnapshotInput {
   payload?: unknown;
 }
 
-export const upsertSourceSnapshot = (db: DatabaseSync, input: SourceSnapshotInput): string => {
+export const upsertSourceSnapshot = async (db: DbExecutor, input: SourceSnapshotInput): Promise<string> => {
   const idempotencyKey = makeIdempotency(input.sourceType, input.capturedAt, input.payloadHash);
-  const existing = db
-    .prepare('SELECT id FROM source_snapshots WHERE idempotency_key = ?')
-    .get(idempotencyKey) as { id: string } | undefined;
+  const existing = await db.query<{ id: string }>('SELECT id FROM source_snapshots WHERE idempotency_key = $1', [idempotencyKey]);
 
-  if (existing) {
-    return existing.id;
+  if (existing.rowCount && existing.rows[0]) {
+    return existing.rows[0].id;
   }
 
   const snapshotId = makeId('snapshot');
 
-  db.prepare(
+  await db.query(
     `
       INSERT INTO source_snapshots (
         id,
@@ -38,156 +36,157 @@ export const upsertSourceSnapshot = (db: DatabaseSync, input: SourceSnapshotInpu
         meta_json,
         payload_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `
-  ).run(
-    snapshotId,
-    idempotencyKey,
-    input.sourceType,
-    input.capturedAt,
-    input.payloadHash,
-    JSON.stringify(input.metadata),
-    input.payload ? JSON.stringify(input.payload) : null
+      VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
+    `,
+    [
+      snapshotId,
+      idempotencyKey,
+      input.sourceType,
+      input.capturedAt,
+      input.payloadHash,
+      JSON.stringify(input.metadata),
+      input.payload ? JSON.stringify(input.payload) : null
+    ]
   );
 
   return snapshotId;
 };
 
-export const upsertSessions = (db: DatabaseSync, rows: SessionRecord[], sourceSnapshotId: string): void => {
+export const upsertSessions = async (db: DbExecutor, rows: SessionRecord[], sourceSnapshotId: string): Promise<void> => {
   const updatedAt = new Date().toISOString();
-  const stmt = db.prepare(
-    `
-      INSERT INTO sessions (
-        session_key,
-        label,
-        status,
-        started_at,
-        ended_at,
-        runtime_ms,
-        model,
-        agent_id,
-        source_snapshot_id,
-        updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(session_key) DO UPDATE SET
-        label = excluded.label,
-        status = excluded.status,
-        started_at = excluded.started_at,
-        ended_at = excluded.ended_at,
-        runtime_ms = excluded.runtime_ms,
-        model = excluded.model,
-        agent_id = excluded.agent_id,
-        source_snapshot_id = excluded.source_snapshot_id,
-        updated_at = excluded.updated_at
-    `
-  );
 
   for (const row of rows) {
-    stmt.run(
-      row.sessionKey,
-      row.label,
-      row.status,
-      row.startedAt,
-      row.endedAt,
-      row.runtimeMs,
-      row.model,
-      row.agentId,
-      sourceSnapshotId,
-      updatedAt
+    await db.query(
+      `
+        INSERT INTO sessions (
+          session_key,
+          label,
+          status,
+          started_at,
+          ended_at,
+          runtime_ms,
+          model,
+          agent_id,
+          source_snapshot_id,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT(session_key) DO UPDATE SET
+          label = excluded.label,
+          status = excluded.status,
+          started_at = excluded.started_at,
+          ended_at = excluded.ended_at,
+          runtime_ms = excluded.runtime_ms,
+          model = excluded.model,
+          agent_id = excluded.agent_id,
+          source_snapshot_id = excluded.source_snapshot_id,
+          updated_at = excluded.updated_at
+      `,
+      [
+        row.sessionKey,
+        row.label,
+        row.status,
+        row.startedAt,
+        row.endedAt,
+        row.runtimeMs,
+        row.model,
+        row.agentId,
+        sourceSnapshotId,
+        updatedAt
+      ]
     );
   }
 };
 
-export const upsertCronJobs = (db: DatabaseSync, rows: CronJobRecord[], sourceSnapshotId: string): void => {
+export const upsertCronJobs = async (db: DbExecutor, rows: CronJobRecord[], sourceSnapshotId: string): Promise<void> => {
   const updatedAt = new Date().toISOString();
-  const stmt = db.prepare(
-    `
-      INSERT INTO cron_jobs (
-        job_id,
-        name,
-        schedule_kind,
-        enabled,
-        next_run_at,
-        source_snapshot_id,
-        updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(job_id) DO UPDATE SET
-        name = excluded.name,
-        schedule_kind = excluded.schedule_kind,
-        enabled = excluded.enabled,
-        next_run_at = excluded.next_run_at,
-        source_snapshot_id = excluded.source_snapshot_id,
-        updated_at = excluded.updated_at
-    `
-  );
 
   for (const row of rows) {
-    stmt.run(row.jobId, row.name, row.scheduleKind, row.enabled ? 1 : 0, row.nextRunAt, sourceSnapshotId, updatedAt);
+    await db.query(
+      `
+        INSERT INTO cron_jobs (
+          job_id,
+          name,
+          schedule_kind,
+          enabled,
+          next_run_at,
+          source_snapshot_id,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT(job_id) DO UPDATE SET
+          name = excluded.name,
+          schedule_kind = excluded.schedule_kind,
+          enabled = excluded.enabled,
+          next_run_at = excluded.next_run_at,
+          source_snapshot_id = excluded.source_snapshot_id,
+          updated_at = excluded.updated_at
+      `,
+      [row.jobId, row.name, row.scheduleKind, row.enabled, row.nextRunAt, sourceSnapshotId, updatedAt]
+    );
   }
 };
 
-export const upsertCronRuns = (db: DatabaseSync, rows: CronRunRecord[], sourceSnapshotId: string): void => {
+export const upsertCronRuns = async (db: DbExecutor, rows: CronRunRecord[], sourceSnapshotId: string): Promise<void> => {
   const updatedAt = new Date().toISOString();
-  const stmt = db.prepare(
-    `
-      INSERT INTO cron_runs (
-        run_id,
-        job_id,
-        status,
-        started_at,
-        ended_at,
-        summary,
-        source_snapshot_id,
-        updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(run_id) DO UPDATE SET
-        job_id = excluded.job_id,
-        status = excluded.status,
-        started_at = excluded.started_at,
-        ended_at = excluded.ended_at,
-        summary = excluded.summary,
-        source_snapshot_id = excluded.source_snapshot_id,
-        updated_at = excluded.updated_at
-    `
-  );
 
   for (const row of rows) {
-    stmt.run(row.runId, row.jobId, row.status, row.startedAt, row.endedAt, row.summary, sourceSnapshotId, updatedAt);
+    await db.query(
+      `
+        INSERT INTO cron_runs (
+          run_id,
+          job_id,
+          status,
+          started_at,
+          ended_at,
+          summary,
+          source_snapshot_id,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT(run_id) DO UPDATE SET
+          job_id = excluded.job_id,
+          status = excluded.status,
+          started_at = excluded.started_at,
+          ended_at = excluded.ended_at,
+          summary = excluded.summary,
+          source_snapshot_id = excluded.source_snapshot_id,
+          updated_at = excluded.updated_at
+      `,
+      [row.runId, row.jobId, row.status, row.startedAt, row.endedAt, row.summary, sourceSnapshotId, updatedAt]
+    );
   }
 };
 
-export const upsertMemoryDocs = (
-  db: DatabaseSync,
+export const upsertMemoryDocs = async (
+  db: DbExecutor,
   rows: Array<MemoryDocRecord & { redaction: RedactionResult }>,
   sourceSnapshotId: string
-): void => {
-  const stmt = db.prepare(
-    `
-      INSERT INTO memory_docs (
-        path,
-        kind,
-        updated_at,
-        summary,
-        source_snapshot_id,
-        redacted
-      ) VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(path) DO UPDATE SET
-        kind = excluded.kind,
-        updated_at = excluded.updated_at,
-        summary = excluded.summary,
-        source_snapshot_id = excluded.source_snapshot_id,
-        redacted = excluded.redacted
-    `
-  );
-
+): Promise<void> => {
   for (const row of rows) {
     const summary = row.redaction.value.slice(0, 240);
-    stmt.run(row.path, row.kind, row.updatedAt, summary, sourceSnapshotId, row.redaction.redacted ? 1 : 0);
+
+    await db.query(
+      `
+        INSERT INTO memory_docs (
+          path,
+          kind,
+          updated_at,
+          summary,
+          source_snapshot_id,
+          redacted
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT(path) DO UPDATE SET
+          kind = excluded.kind,
+          updated_at = excluded.updated_at,
+          summary = excluded.summary,
+          source_snapshot_id = excluded.source_snapshot_id,
+          redacted = excluded.redacted
+      `,
+      [row.path, row.kind, row.updatedAt, summary, sourceSnapshotId, row.redaction.redacted]
+    );
   }
 };
 
-export const appendEvent = (
-  db: DatabaseSync,
+export const appendEvent = async (
+  db: DbExecutor,
   event: {
     ts: string;
     category: string;
@@ -196,11 +195,11 @@ export const appendEvent = (
     details: string;
     sourceRef?: string;
   }
-): void => {
+): Promise<void> => {
   const eventId = makeId('event');
   const idempotencyKey = makeIdempotency(event.category, event.severity, event.title, event.ts);
 
-  db.prepare(
+  await db.query(
     `
       INSERT INTO events (
         event_id,
@@ -211,23 +210,24 @@ export const appendEvent = (
         title,
         details,
         source_ref
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT(idempotency_key) DO NOTHING
-    `
-  ).run(eventId, idempotencyKey, event.ts, event.category, event.severity, event.title, event.details, event.sourceRef ?? null);
+    `,
+    [eventId, idempotencyKey, event.ts, event.category, event.severity, event.title, event.details, event.sourceRef ?? null]
+  );
 };
 
-export const upsertHealthSample = (
-  db: DatabaseSync,
+export const upsertHealthSample = async (
+  db: DbExecutor,
   sample: StatusSnapshot,
   sourceSnapshotId: string,
   stale: boolean
-): void => {
+): Promise<void> => {
   const ts = new Date().toISOString();
   const sampleId = makeId('health');
   const idempotencyKey = makeIdempotency(sample.openclawStatus, sample.raw, ts.slice(0, 19));
 
-  db.prepare(
+  await db.query(
     `
       INSERT INTO health_samples (
         sample_id,
@@ -238,39 +238,49 @@ export const upsertHealthSample = (
         errors_json,
         stale,
         source_snapshot_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES ($1, $2, $3, $4, NULL, $5::jsonb, $6, $7)
       ON CONFLICT(idempotency_key) DO NOTHING
-    `
-  ).run(sampleId, idempotencyKey, ts, sample.openclawStatus, null, JSON.stringify(sample.errors), stale ? 1 : 0, sourceSnapshotId);
+    `,
+    [sampleId, idempotencyKey, ts, sample.openclawStatus, JSON.stringify(sample.errors), stale, sourceSnapshotId]
+  );
 };
 
-export const markCollectorSuccess = (db: DatabaseSync, collectorName: string): void => {
+export const markCollectorSuccess = async (db: DbExecutor, collectorName: string): Promise<void> => {
   const now = new Date().toISOString();
-  db.prepare(
+
+  await db.query(
     `
       INSERT INTO collector_state (collector_name, last_success_at, last_error_at, error_count, stale, last_error)
-      VALUES (?, ?, NULL, 0, 0, NULL)
+      VALUES ($1, $2, NULL, 0, FALSE, NULL)
       ON CONFLICT(collector_name) DO UPDATE SET
         last_success_at = excluded.last_success_at,
         last_error_at = NULL,
         error_count = 0,
-        stale = 0,
+        stale = FALSE,
         last_error = NULL
-    `
-  ).run(collectorName, now);
+    `,
+    [collectorName, now]
+  );
 };
 
-export const markCollectorFailure = (db: DatabaseSync, collectorName: string, errorMessage: string, stale: boolean): void => {
+export const markCollectorFailure = async (
+  db: DbExecutor,
+  collectorName: string,
+  errorMessage: string,
+  stale: boolean
+): Promise<void> => {
   const now = new Date().toISOString();
-  db.prepare(
+
+  await db.query(
     `
       INSERT INTO collector_state (collector_name, last_success_at, last_error_at, error_count, stale, last_error)
-      VALUES (?, NULL, ?, 1, ?, ?)
+      VALUES ($1, NULL, $2, 1, $3, $4)
       ON CONFLICT(collector_name) DO UPDATE SET
         last_error_at = excluded.last_error_at,
         error_count = collector_state.error_count + 1,
         stale = excluded.stale,
         last_error = excluded.last_error
-    `
-  ).run(collectorName, now, stale ? 1 : 0, errorMessage);
+    `,
+    [collectorName, now, stale, errorMessage]
+  );
 };

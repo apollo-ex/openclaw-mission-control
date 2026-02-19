@@ -2,19 +2,30 @@ import type { AgentsResponse, CronResponse, HealthResponse, MemoryResponse, Over
 
 const FALLBACK_BASE_URL = 'http://127.0.0.1:4242';
 
-export const resolveApiBaseUrl = (
-  env: { MISSION_CONTROL_API_BASE_URL?: string } = process.env as { MISSION_CONTROL_API_BASE_URL?: string }
-): string => {
+interface MissionControlEnv {
+  MISSION_CONTROL_API_BASE_URL?: string;
+  MISSION_CONTROL_API_TOKEN?: string;
+}
+
+export const resolveApiBaseUrl = (env: MissionControlEnv = process.env as MissionControlEnv): string => {
   const raw = env.MISSION_CONTROL_API_BASE_URL?.trim();
   return raw ? raw.replace(/\/$/, '') : FALLBACK_BASE_URL;
 };
 
+export const resolveApiToken = (env: MissionControlEnv = process.env as MissionControlEnv): string | null => {
+  const raw = env.MISSION_CONTROL_API_TOKEN?.trim();
+  return raw ? raw : null;
+};
+
 const fetchJson = async <T>(path: string): Promise<T> => {
   const baseUrl = resolveApiBaseUrl();
+  const apiToken = resolveApiToken();
+
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'GET',
     headers: {
-      Accept: 'application/json'
+      Accept: 'application/json',
+      ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {})
     },
     cache: 'no-store'
   });

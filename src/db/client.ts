@@ -1,12 +1,10 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { Pool } from 'pg';
 
-export const openDatabase = (dbPath: string): DatabaseSync => {
-  const directory = path.dirname(dbPath);
-  fs.mkdirSync(directory, { recursive: true });
-  const db = new DatabaseSync(dbPath);
-  db.exec('PRAGMA journal_mode = WAL;');
-  db.exec('PRAGMA foreign_keys = ON;');
-  return db;
+export const openDatabase = (databaseUrl: string): Pool => {
+  return new Pool({
+    connectionString: databaseUrl,
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000
+  });
 };

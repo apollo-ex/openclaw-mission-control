@@ -1,10 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getOverview, resolveApiBaseUrl } from './api';
+import { getOverview, resolveApiBaseUrl, resolveApiToken } from './api';
 
 test('resolveApiBaseUrl defaults to localhost and trims trailing slash', () => {
   assert.equal(resolveApiBaseUrl({}), 'http://127.0.0.1:4242');
   assert.equal(resolveApiBaseUrl({ MISSION_CONTROL_API_BASE_URL: 'https://example.com/' }), 'https://example.com');
+});
+
+test('resolveApiToken returns null when unset', () => {
+  assert.equal(resolveApiToken({}), null);
+  assert.equal(resolveApiToken({ MISSION_CONTROL_API_TOKEN: 'abc' }), 'abc');
 });
 
 test('getOverview fetches read-only overview payload', async (t) => {
@@ -13,6 +18,7 @@ test('getOverview fetches read-only overview payload', async (t) => {
   globalThis.fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
     assert.equal(String(input), 'https://api.example.com/api/overview');
     assert.equal(init?.method, 'GET');
+    assert.equal((init?.headers as Record<string, string>)?.Authorization, 'Bearer token-123');
 
     return new Response(
       JSON.stringify({
@@ -40,10 +46,15 @@ test('getOverview fetches read-only overview payload', async (t) => {
     globalThis.fetch = originalFetch;
   });
 
-  const originalEnv = process.env.MISSION_CONTROL_API_BASE_URL;
+  const originalBaseUrl = process.env.MISSION_CONTROL_API_BASE_URL;
+  const originalToken = process.env.MISSION_CONTROL_API_TOKEN;
+
   process.env.MISSION_CONTROL_API_BASE_URL = 'https://api.example.com';
+  process.env.MISSION_CONTROL_API_TOKEN = 'token-123';
+
   t.after(() => {
-    process.env.MISSION_CONTROL_API_BASE_URL = originalEnv;
+    process.env.MISSION_CONTROL_API_BASE_URL = originalBaseUrl;
+    process.env.MISSION_CONTROL_API_TOKEN = originalToken;
   });
 
   const payload = await getOverview();

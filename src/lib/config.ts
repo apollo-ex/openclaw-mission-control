@@ -1,9 +1,8 @@
-import path from 'node:path';
-
 export interface AppConfig {
   host: string;
   port: number;
-  dbPath: string;
+  databaseUrl: string;
+  apiToken: string | null;
   workspaceRoot: string;
   hotIntervalMs: number;
   warmIntervalMs: number;
@@ -11,6 +10,8 @@ export interface AppConfig {
   collectorBackoffBaseMs: number;
   collectorBackoffMaxMs: number;
 }
+
+const DEFAULT_DATABASE_URL = 'postgresql://openclaw_test_user:openclaw_local_dev_pw_2026@localhost:5432/openclaw_test_db';
 
 const toInt = (value: string | undefined, fallback: number, label: string): number => {
   const raw = value?.trim();
@@ -33,8 +34,9 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env): AppConfig => {
   return {
     host,
     port,
-    dbPath: path.resolve(env.MISSION_CONTROL_DB_PATH?.trim() || './data/mission-control.sqlite'),
-    workspaceRoot: path.resolve(env.OPENCLAW_WORKSPACE?.trim() || '/Users/apollo/.openclaw/workspace'),
+    databaseUrl: env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL,
+    apiToken: env.MISSION_CONTROL_API_TOKEN?.trim() || null,
+    workspaceRoot: env.OPENCLAW_WORKSPACE?.trim() || '/Users/apollo/.openclaw/workspace',
     hotIntervalMs: toInt(env.HOT_INTERVAL_MS, 10_000, 'HOT_INTERVAL_MS'),
     warmIntervalMs: toInt(env.WARM_INTERVAL_MS, 120_000, 'WARM_INTERVAL_MS'),
     collectorMaxRetries: toInt(env.COLLECTOR_MAX_RETRIES, 3, 'COLLECTOR_MAX_RETRIES'),

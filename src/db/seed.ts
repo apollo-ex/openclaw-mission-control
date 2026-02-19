@@ -1,21 +1,23 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { DbExecutor } from './types.js';
 
-export const seedDatabase = (db: DatabaseSync): void => {
+export const seedDatabase = async (db: DbExecutor): Promise<void> => {
   const now = new Date().toISOString();
 
-  db.prepare(
+  await db.query(
     `
       INSERT INTO agents (agent_id, role, configured, source_snapshot_id, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT(agent_id) DO NOTHING
-    `
-  ).run('local-observer', 'observer', 1, null, now);
+    `,
+    ['local-observer', 'observer', true, null, now]
+  );
 
-  db.prepare(
+  await db.query(
     `
       INSERT INTO collector_state (collector_name, last_success_at, last_error_at, error_count, stale, last_error)
-      VALUES (?, NULL, NULL, 0, 0, NULL)
+      VALUES ($1, NULL, NULL, 0, FALSE, NULL)
       ON CONFLICT(collector_name) DO NOTHING
-    `
-  ).run('sessions_hot');
+    `,
+    ['sessions_hot']
+  );
 };

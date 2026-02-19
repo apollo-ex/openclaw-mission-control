@@ -10,12 +10,12 @@ import { logger } from './lib/logger.js';
 
 const main = async (): Promise<void> => {
   const config = loadConfig();
-  const db = openDatabase(config.dbPath);
+  const db = openDatabase(config.databaseUrl);
 
-  const migrationResult = applyMigrations(db, path.resolve(process.cwd(), 'migrations'));
+  const migrationResult = await applyMigrations(db, path.resolve(process.cwd(), 'migrations'));
   logger.info('migrations_complete', migrationResult);
 
-  seedDatabase(db);
+  await seedDatabase(db);
   logger.info('seed_complete');
 
   const scheduler = new CollectorScheduler(
@@ -31,20 +31,27 @@ const main = async (): Promise<void> => {
 
   scheduler.start();
 
-  const server = createAppServer(logger, db);
+  const server = createAppServer(logger, db, config.apiToken);
   server.listen(config.port, config.host, () => {
     logger.info('mission_control_started', {
       host: config.host,
       port: config.port,
-      dbPath: config.dbPath
+      databaseUrl: config.databaseUrl.replace(/:[^:@]+@/, ':***@')
     });
   });
 
+  let shuttingDown = false;
   const shutdown = (): void => {
+    if (shuttingDown) {
+      return;
+    }
+
+    shuttingDown = true;
     logger.info('mission_control_shutdown');
     scheduler.stop();
-    server.close(() => {
-      db.close();
+
+    server.close(async () => {
+      await db.end();
       process.exit(0);
     });
   };

@@ -16,7 +16,7 @@ export const buildCollectors = (config: AppConfig): CollectorTask[] => {
       cadence: CadenceProfile.hot(config.hotIntervalMs),
       run: async ({ db }) => {
         const snapshot = await sessionsAdapter.collect();
-        ingestSessionsSnapshot(db, snapshot);
+        await ingestSessionsSnapshot(db, snapshot);
       }
     },
     {
@@ -24,7 +24,7 @@ export const buildCollectors = (config: AppConfig): CollectorTask[] => {
       cadence: CadenceProfile.hot(config.hotIntervalMs),
       run: async ({ db }) => {
         const snapshot = await cronAdapter.collect();
-        ingestCronSnapshot(db, snapshot);
+        await ingestCronSnapshot(db, snapshot);
       }
     },
     {
@@ -32,7 +32,7 @@ export const buildCollectors = (config: AppConfig): CollectorTask[] => {
       cadence: CadenceProfile.hot(config.hotIntervalMs),
       run: async ({ db }) => {
         const snapshot = await statusAdapter.collect();
-        ingestStatusSnapshot(db, snapshot);
+        await ingestStatusSnapshot(db, snapshot);
       }
     },
     {
@@ -40,7 +40,7 @@ export const buildCollectors = (config: AppConfig): CollectorTask[] => {
       cadence: CadenceProfile.warm(config.warmIntervalMs),
       run: async ({ db }) => {
         const snapshot = await memoryAdapter.collect();
-        ingestMemorySnapshot(db, snapshot);
+        await ingestMemorySnapshot(db, snapshot);
       }
     }
   ];

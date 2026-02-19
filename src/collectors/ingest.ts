@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import type { DatabaseSync } from 'node:sqlite';
 import type { CollectedSnapshot, CronSnapshot, MemoryDocRecord, SessionRecord, StatusSnapshot } from '../adapters/types.js';
 import {
   appendEvent,
@@ -10,14 +9,15 @@ import {
   upsertSessions,
   upsertSourceSnapshot
 } from '../db/upserts.js';
+import type { DbExecutor } from '../db/types.js';
 import { redactText } from '../security/redaction.js';
 
 const hashPayload = (payload: unknown): string => {
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 };
 
-export const ingestSessionsSnapshot = (db: DatabaseSync, snapshot: CollectedSnapshot<SessionRecord[]>): void => {
-  const snapshotId = upsertSourceSnapshot(db, {
+export const ingestSessionsSnapshot = async (db: DbExecutor, snapshot: CollectedSnapshot<SessionRecord[]>): Promise<void> => {
+  const snapshotId = await upsertSourceSnapshot(db, {
     sourceType: snapshot.metadata.sourceType,
     capturedAt: snapshot.metadata.capturedAt,
     payloadHash: hashPayload(snapshot.data),
@@ -25,10 +25,10 @@ export const ingestSessionsSnapshot = (db: DatabaseSync, snapshot: CollectedSnap
     payload: snapshot.data
   });
 
-  upsertSessions(db, snapshot.data, snapshotId);
+  await upsertSessions(db, snapshot.data, snapshotId);
 
   for (const warning of snapshot.warnings) {
-    appendEvent(db, {
+    await appendEvent(db, {
       ts: snapshot.metadata.capturedAt,
       category: 'sessions',
       severity: 'warning',
@@ -39,8 +39,8 @@ export const ingestSessionsSnapshot = (db: DatabaseSync, snapshot: CollectedSnap
   }
 };
 
-export const ingestCronSnapshot = (db: DatabaseSync, snapshot: CollectedSnapshot<CronSnapshot>): void => {
-  const snapshotId = upsertSourceSnapshot(db, {
+export const ingestCronSnapshot = async (db: DbExecutor, snapshot: CollectedSnapshot<CronSnapshot>): Promise<void> => {
+  const snapshotId = await upsertSourceSnapshot(db, {
     sourceType: snapshot.metadata.sourceType,
     capturedAt: snapshot.metadata.capturedAt,
     payloadHash: hashPayload(snapshot.data),
@@ -48,11 +48,11 @@ export const ingestCronSnapshot = (db: DatabaseSync, snapshot: CollectedSnapshot
     payload: snapshot.data
   });
 
-  upsertCronJobs(db, snapshot.data.jobs, snapshotId);
-  upsertCronRuns(db, snapshot.data.runs, snapshotId);
+  await upsertCronJobs(db, snapshot.data.jobs, snapshotId);
+  await upsertCronRuns(db, snapshot.data.runs, snapshotId);
 
   for (const warning of snapshot.warnings) {
-    appendEvent(db, {
+    await appendEvent(db, {
       ts: snapshot.metadata.capturedAt,
       category: 'cron',
       severity: 'warning',
@@ -63,13 +63,13 @@ export const ingestCronSnapshot = (db: DatabaseSync, snapshot: CollectedSnapshot
   }
 };
 
-export const ingestMemorySnapshot = (db: DatabaseSync, snapshot: CollectedSnapshot<MemoryDocRecord[]>): void => {
+export const ingestMemorySnapshot = async (db: DbExecutor, snapshot: CollectedSnapshot<MemoryDocRecord[]>): Promise<void> => {
   const redactedDocs = snapshot.data.map((doc) => ({
     ...doc,
     redaction: redactText(doc.content, doc.path)
   }));
 
-  const snapshotId = upsertSourceSnapshot(db, {
+  const snapshotId = await upsertSourceSnapshot(db, {
     sourceType: snapshot.metadata.sourceType,
     capturedAt: snapshot.metadata.capturedAt,
     payloadHash: hashPayload(redactedDocs.map((item) => ({ path: item.path, value: item.redaction.value }))),
@@ -83,10 +83,10 @@ export const ingestMemorySnapshot = (db: DatabaseSync, snapshot: CollectedSnapsh
     }))
   });
 
-  upsertMemoryDocs(db, redactedDocs, snapshotId);
+  await upsertMemoryDocs(db, redactedDocs, snapshotId);
 
   for (const warning of snapshot.warnings) {
-    appendEvent(db, {
+    await appendEvent(db, {
       ts: snapshot.metadata.capturedAt,
       category: 'memory',
       severity: 'warning',
@@ -97,10 +97,10 @@ export const ingestMemorySnapshot = (db: DatabaseSync, snapshot: CollectedSnapsh
   }
 };
 
-export const ingestStatusSnapshot = (db: DatabaseSync, snapshot: CollectedSnapshot<StatusSnapshot>): void => {
+export const ingestStatusSnapshot = async (db: DbExecutor, snapshot: CollectedSnapshot<StatusSnapshot>): Promise<void> => {
   const redactedRaw = redactText(snapshot.data.raw, snapshot.metadata.sourceRef);
 
-  const snapshotId = upsertSourceSnapshot(db, {
+  const snapshotId = await upsertSourceSnapshot(db, {
     sourceType: snapshot.metadata.sourceType,
     capturedAt: snapshot.metadata.capturedAt,
     payloadHash: hashPayload({ ...snapshot.data, raw: redactedRaw.value }),
@@ -112,11 +112,11 @@ export const ingestStatusSnapshot = (db: DatabaseSync, snapshot: CollectedSnapsh
     }
   });
 
-  upsertHealthSample(db, { ...snapshot.data, raw: redactedRaw.value }, snapshotId, false);
+  await upsertHealthSample(db, { ...snapshot.data, raw: redactedRaw.value }, snapshotId, false);
 
   for (const warning of snapshot.warnings) {
     const redactedWarning = redactText(warning, snapshot.metadata.sourceRef);
-    appendEvent(db, {
+    await appendEvent(db, {
       ts: snapshot.metadata.capturedAt,
       category: 'status',
       severity: 'warning',

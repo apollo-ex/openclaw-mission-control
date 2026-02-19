@@ -1,23 +1,16 @@
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { SourceMetadata } from '../adapters/types.js';
-import { openDatabase } from '../db/client.js';
-import { applyMigrations } from '../db/migrations.js';
+import { createTestDatabase } from '../db/test-utils.js';
 import { ingestCronSnapshot, ingestMemorySnapshot, ingestSessionsSnapshot, ingestStatusSnapshot } from './ingest.js';
 
-const withDb = async <T>(fn: (db: ReturnType<typeof openDatabase>) => Promise<T> | T): Promise<T> => {
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-ingest-'));
-  const dbPath = path.join(tmpRoot, 'test.sqlite');
-  const db = openDatabase(dbPath);
+const withDb = async <T>(fn: (db: Awaited<ReturnType<typeof createTestDatabase>>['db']) => Promise<T> | T): Promise<T> => {
+  const { db, close } = await createTestDatabase();
 
   try {
-    applyMigrations(db, path.resolve(process.cwd(), 'migrations'));
     return await fn(db);
   } finally {
-    db.close();
+    await close();
   }
 };
 
@@ -31,8 +24,8 @@ const baseMetadata = (sourceType: SourceMetadata['sourceType'], sourceRef: strin
 });
 
 test('ingestSessionsSnapshot writes sessions and warning event', async () => {
-  await withDb((db) => {
-    ingestSessionsSnapshot(db, {
+  await withDb(async (db) => {
+    await ingestSessionsSnapshot(db, {
       metadata: baseMetadata('sessions', 'openclaw sessions list --json'),
       data: [
         {
@@ -49,26 +42,30 @@ test('ingestSessionsSnapshot writes sessions and warning event', async () => {
       warnings: ['sessions_command_failed:transient']
     });
 
-    const sessionRow = db
-      .prepare('SELECT session_key as sessionKey, label, status FROM sessions WHERE session_key = ?')
-      .get('session-1') as { sessionKey: string; label: string; status: string };
+    const sessionResult = await db.query<{ session_key: string; label: string; status: string }>(
+      'SELECT session_key, label, status FROM sessions WHERE session_key = $1',
+      ['session-1']
+    );
 
-    assert.equal(sessionRow.sessionKey, 'session-1');
-    assert.equal(sessionRow.label, 'First session');
-    assert.equal(sessionRow.status, 'active');
+    const sessionRow = sessionResult.rows[0];
+    assert.equal(sessionRow?.session_key, 'session-1');
+    assert.equal(sessionRow?.label, 'First session');
+    assert.equal(sessionRow?.status, 'active');
 
-    const eventRow = db
-      .prepare('SELECT category, title, details FROM events WHERE category = ?')
-      .get('sessions') as { category: string; title: string; details: string };
+    const eventResult = await db.query<{ category: string; title: string; details: string }>(
+      'SELECT category, title, details FROM events WHERE category = $1',
+      ['sessions']
+    );
 
-    assert.equal(eventRow.title, 'sessions_adapter_warning');
-    assert.equal(eventRow.details, 'sessions_command_failed:transient');
+    const eventRow = eventResult.rows[0];
+    assert.equal(eventRow?.title, 'sessions_adapter_warning');
+    assert.equal(eventRow?.details, 'sessions_command_failed:transient');
   });
 });
 
 test('ingestCronSnapshot writes jobs/runs and warnings', async () => {
-  await withDb((db) => {
-    ingestCronSnapshot(db, {
+  await withDb(async (db) => {
+    await ingestCronSnapshot(db, {
       metadata: baseMetadata('cron', 'openclaw cron list --json'),
       data: {
         jobs: [
@@ -94,19 +91,19 @@ test('ingestCronSnapshot writes jobs/runs and warnings', async () => {
       warnings: ['cron_output_not_json']
     });
 
-    const jobs = db.prepare('SELECT COUNT(*) as count FROM cron_jobs').get() as { count: number };
-    const runs = db.prepare('SELECT COUNT(*) as count FROM cron_runs').get() as { count: number };
-    const events = db.prepare('SELECT COUNT(*) as count FROM events WHERE category = ?').get('cron') as { count: number };
+    const jobs = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM cron_jobs');
+    const runs = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM cron_runs');
+    const events = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM events WHERE category = $1', ['cron']);
 
-    assert.equal(jobs.count, 1);
-    assert.equal(runs.count, 1);
-    assert.equal(events.count, 1);
+    assert.equal(Number(jobs.rows[0]?.count ?? 0), 1);
+    assert.equal(Number(runs.rows[0]?.count ?? 0), 1);
+    assert.equal(Number(events.rows[0]?.count ?? 0), 1);
   });
 });
 
 test('ingestMemorySnapshot redacts persisted summaries and stores metadata payload', async () => {
-  await withDb((db) => {
-    ingestMemorySnapshot(db, {
+  await withDb(async (db) => {
+    await ingestMemorySnapshot(db, {
       metadata: baseMetadata('memory', '/tmp/workspace'),
       data: [
         {
@@ -125,22 +122,24 @@ test('ingestMemorySnapshot redacts persisted summaries and stores metadata paylo
       warnings: []
     });
 
-    const rows = db
-      .prepare('SELECT path, redacted, summary FROM memory_docs ORDER BY path ASC')
-      .all() as Array<{ path: string; redacted: number; summary: string }>;
+    const rowsResult = await db.query<{ path: string; redacted: boolean; summary: string }>(
+      'SELECT path, redacted, summary FROM memory_docs ORDER BY path ASC'
+    );
 
+    const rows = rowsResult.rows;
     assert.equal(rows.length, 2);
     assert.equal(rows[0]?.path, '/tmp/workspace/memory/notes.md');
-    assert.equal(rows[0]?.redacted, 1);
+    assert.equal(rows[0]?.redacted, true);
     assert.equal(rows[0]?.summary.includes('[REDACTED]'), true);
     assert.equal(rows[1]?.path, '/tmp/workspace/memory/secrets.md');
     assert.equal(rows[1]?.summary, '[REDACTED:EXCLUDED_PATH]');
 
-    const payloadRow = db
-      .prepare('SELECT payload_json as payloadJson FROM source_snapshots WHERE source_type = ? LIMIT 1')
-      .get('memory') as { payloadJson: string };
+    const payloadResult = await db.query<{ payload_json: Array<{ redacted: boolean; indicators: string[] }> }>(
+      'SELECT payload_json FROM source_snapshots WHERE source_type = $1 LIMIT 1',
+      ['memory']
+    );
 
-    const payload = JSON.parse(payloadRow.payloadJson) as Array<{ redacted: boolean; indicators: string[] }>;
+    const payload = payloadResult.rows[0]?.payload_json ?? [];
     assert.equal(payload.length, 2);
     assert.equal(payload[0]?.redacted, true);
     assert.equal(payload[1]?.indicators.includes('path_excluded'), true);
@@ -148,8 +147,8 @@ test('ingestMemorySnapshot redacts persisted summaries and stores metadata paylo
 });
 
 test('ingestStatusSnapshot redacts raw/warnings and stores health sample', async () => {
-  await withDb((db) => {
-    ingestStatusSnapshot(db, {
+  await withDb(async (db) => {
+    await ingestStatusSnapshot(db, {
       metadata: baseMetadata('status', '/tmp/.env'),
       data: {
         openclawStatus: 'degraded',
@@ -159,25 +158,24 @@ test('ingestStatusSnapshot redacts raw/warnings and stores health sample', async
       warnings: ['Bearer abcdefghijklmnop']
     });
 
-    const health = db
-      .prepare('SELECT openclaw_status as openclawStatus, stale FROM health_samples LIMIT 1')
-      .get() as { openclawStatus: string; stale: number };
+    const healthResult = await db.query<{ openclaw_status: string; stale: boolean }>(
+      'SELECT openclaw_status, stale FROM health_samples LIMIT 1'
+    );
 
-    assert.equal(health.openclawStatus, 'degraded');
-    assert.equal(health.stale, 0);
+    const health = healthResult.rows[0];
+    assert.equal(health?.openclaw_status, 'degraded');
+    assert.equal(health?.stale, false);
 
-    const statusEvent = db
-      .prepare('SELECT details FROM events WHERE category = ? LIMIT 1')
-      .get('status') as { details: string };
+    const statusEvent = await db.query<{ details: string }>('SELECT details FROM events WHERE category = $1 LIMIT 1', ['status']);
+    assert.equal(statusEvent.rows[0]?.details, '[REDACTED:EXCLUDED_PATH]');
 
-    assert.equal(statusEvent.details, '[REDACTED:EXCLUDED_PATH]');
+    const snapshotResult = await db.query<{ payload_json: { raw: string; redactionIndicators: string[] } }>(
+      'SELECT payload_json FROM source_snapshots WHERE source_type = $1 LIMIT 1',
+      ['status']
+    );
 
-    const snapshot = db
-      .prepare('SELECT payload_json as payloadJson FROM source_snapshots WHERE source_type = ? LIMIT 1')
-      .get('status') as { payloadJson: string };
-
-    const payload = JSON.parse(snapshot.payloadJson) as { raw: string; redactionIndicators: string[] };
-    assert.equal(payload.raw, '[REDACTED:EXCLUDED_PATH]');
-    assert.equal(payload.redactionIndicators.includes('path_excluded'), true);
+    const payload = snapshotResult.rows[0]?.payload_json;
+    assert.equal(payload?.raw, '[REDACTED:EXCLUDED_PATH]');
+    assert.equal(payload?.redactionIndicators.includes('path_excluded'), true);
   });
 });

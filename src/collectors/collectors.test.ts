@@ -6,7 +6,8 @@ test('buildCollectors wires expected task names and cadence intervals', () => {
   const tasks = buildCollectors({
     host: '127.0.0.1',
     port: 4242,
-    dbPath: '/tmp/test.sqlite',
+    databaseUrl: 'postgresql://openclaw_test_user:openclaw_local_dev_pw_2026@localhost:5432/openclaw_test_db',
+    apiToken: null,
     workspaceRoot: '/tmp/workspace',
     hotIntervalMs: 5000,
     warmIntervalMs: 25000,
