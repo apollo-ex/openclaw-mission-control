@@ -78,3 +78,4 @@ curl -I https://<production-url>
 - OpenClaw CLI JSON output may drift from parser assumptions.
 - `status` parsing is heuristic string classification.
 - No production UI layer yet; this is local observability backend MVP.
+- Vercel CLI deployment currently fails with: `No Output Directory named "public" found` because this repo is a daemon service, not a static/Next.js web app.

@@ -25,8 +25,8 @@ Release is considered done only when all are true:
 | P1 | MC-007 | Strict test gating via coverage thresholds | DONE | `npm run test:coverage` with line/function/branch minima |
 | P1 | MC-008 | CI workflow for lint/test/build | DONE | `.github/workflows/ci.yml` |
 | P1 | MC-009 | Release checklist + rollback notes | DONE | `RELEASE.md` |
-| P1 | MC-010 | GitHub publish with commits | IN_PROGRESS | Attempting with authenticated `gh` |
-| P1 | MC-011 | Vercel deployment attempt | IN_PROGRESS | Attempting with authenticated `vercel` |
+| P1 | MC-010 | GitHub publish with commits | DONE | Published: `https://github.com/apollo-ex/openclaw-mission-control` |
+| P1 | MC-011 | Vercel deployment attempt | BLOCKED | Build passed but deployment failed: no Vercel output directory (`public`) for daemon-style service |
 
 ## Exit Checklist
 
@@ -36,5 +36,5 @@ Release is considered done only when all are true:
 - [x] Coverage thresholds enforced in scripts
 - [x] CI pipeline added
 - [x] Release + rollback runbook added
-- [ ] GitHub remote created and pushed
-- [ ] Vercel deployment verified
+- [x] GitHub remote created and pushed
+- [ ] Vercel deployment verified (attempted; blocked by output-directory mismatch)
