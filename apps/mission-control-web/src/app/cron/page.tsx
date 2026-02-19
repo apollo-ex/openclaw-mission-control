@@ -24,14 +24,14 @@ export default async function CronPage() {
       </div>
 
       <div className="grid" style={{ marginBottom: 16 }}>
-        <div className="card stat">
+        <article className="kpi">
           <h3>Enabled Jobs</h3>
-          <div>{payload.jobs.filter((j) => j.enabled).length}</div>
-        </div>
-        <div className="card stat">
+          <div className="value">{payload.jobs.filter((j) => j.enabled).length}</div>
+        </article>
+        <article className="kpi">
           <h3>Disabled Jobs</h3>
-          <div>{payload.jobs.filter((j) => !j.enabled).length}</div>
-        </div>
+          <div className="value">{payload.jobs.filter((j) => !j.enabled).length}</div>
+        </article>
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
