@@ -44,6 +44,14 @@ export interface CronJobRecord {
   scheduleKind: string;
   enabled: boolean;
   nextRunAt: string | null;
+  agentId?: string;
+  sessionKey?: string;
+  sessionTarget?: string;
+  wakeMode?: string;
+  schedule?: Record<string, unknown>;
+  delivery?: Record<string, unknown>;
+  payload?: Record<string, unknown>;
+  state?: Record<string, unknown>;
 }
 
 export interface CronRunRecord {

@@ -98,6 +98,7 @@ export interface CronJobDto {
   enabled: boolean;
   nextRunAt: string | null;
   updatedAt: string;
+  detailsMarkdown: string;
 }
 
 export interface CronRunDto {

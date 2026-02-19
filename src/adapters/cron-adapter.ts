@@ -10,13 +10,34 @@ import type {
 
 const DEFAULT_COMMAND = ['openclaw', 'cron', 'list', '--json'] as const;
 
+const toObject = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
+
 const normalizeJob = (item: Record<string, unknown>): CronJobRecord => {
+  const schedule = toObject(item.schedule);
+  const state = toObject(item.state);
+
+  const nextRunAtMs = typeof state?.nextRunAtMs === 'number' ? state.nextRunAtMs : null;
+
   return {
     jobId: String(item.jobId ?? item.job_id ?? item.id ?? 'unknown'),
     name: String(item.name ?? 'unnamed'),
-    scheduleKind: String(item.scheduleKind ?? item.schedule_kind ?? 'unknown'),
+    scheduleKind: String(item.scheduleKind ?? item.schedule_kind ?? schedule?.kind ?? 'unknown'),
     enabled: Boolean(item.enabled ?? false),
-    nextRunAt: typeof item.nextRunAt === 'string' ? item.nextRunAt : null
+    nextRunAt:
+      typeof item.nextRunAt === 'string'
+        ? item.nextRunAt
+        : nextRunAtMs
+          ? new Date(nextRunAtMs).toISOString()
+          : null,
+    agentId: typeof item.agentId === 'string' ? item.agentId : undefined,
+    sessionKey: typeof item.sessionKey === 'string' ? item.sessionKey : undefined,
+    sessionTarget: typeof item.sessionTarget === 'string' ? item.sessionTarget : undefined,
+    wakeMode: typeof item.wakeMode === 'string' ? item.wakeMode : undefined,
+    schedule,
+    delivery: toObject(item.delivery),
+    payload: toObject(item.payload),
+    state
   };
 };
 

@@ -173,6 +173,86 @@ export const readMemory = async (db: DbExecutor): Promise<MemoryDto> => {
   };
 };
 
+const safeString = (value: unknown, fallback = '—'): string => (typeof value === 'string' && value.trim().length > 0 ? value : fallback);
+
+const formatDateMs = (value: unknown): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '—';
+  }
+  return new Date(value).toISOString();
+};
+
+const cronDetailsMarkdown = (raw: Record<string, unknown> | null): string => {
+  if (!raw) {
+    return 'No extended cron metadata available.';
+  }
+
+  const schedule = (raw.schedule ?? {}) as Record<string, unknown>;
+  const delivery = (raw.delivery ?? {}) as Record<string, unknown>;
+  const state = (raw.state ?? {}) as Record<string, unknown>;
+  const payload = (raw.payload ?? {}) as Record<string, unknown>;
+
+  const lines = [
+    `### Schedule`,
+    `- Kind: ${safeString(schedule.kind, safeString(raw.scheduleKind, 'unknown'))}`,
+    `- Expr: ${safeString(schedule.expr)}`,
+    `- TZ: ${safeString(schedule.tz)}`,
+    '',
+    `### Target`,
+    `- Agent: ${safeString(raw.agentId)}`,
+    `- Session Key: ${safeString(raw.sessionKey)}`,
+    `- Session Target: ${safeString(raw.sessionTarget)}`,
+    `- Wake Mode: ${safeString(raw.wakeMode)}`,
+    '',
+    `### Delivery`,
+    `- Mode: ${safeString(delivery.mode)}`,
+    `- Channel: ${safeString(delivery.channel)}`,
+    `- To: ${safeString(delivery.to)}`,
+    '',
+    `### Last Execution State`,
+    `- Last Status: ${safeString(state.lastStatus)}`,
+    `- Last Run: ${formatDateMs(state.lastRunAtMs)}`,
+    `- Last Duration (ms): ${typeof state.lastDurationMs === 'number' ? state.lastDurationMs : '—'}`,
+    `- Consecutive Errors: ${typeof state.consecutiveErrors === 'number' ? state.consecutiveErrors : '—'}`,
+    `- Next Run: ${formatDateMs(state.nextRunAtMs)}`,
+    ''
+  ];
+
+  if (typeof payload.message === 'string' && payload.message.trim().length > 0) {
+    lines.push('### Script / Prompt', '', payload.message);
+  }
+
+  return lines.join('\n');
+};
+
+const normalizeJobId = (job: Record<string, unknown>): string => String(job.jobId ?? job.job_id ?? job.id ?? 'unknown');
+
+const readLatestCronRawJobs = async (db: DbExecutor): Promise<Map<string, Record<string, unknown>>> => {
+  const result = await db.query<{ payload_json: { jobs?: unknown } | null }>(`
+      SELECT payload_json
+      FROM source_snapshots
+      WHERE source_type = 'cron'
+      ORDER BY captured_at DESC
+      LIMIT 1
+    `);
+
+  const payload = result.rows[0]?.payload_json;
+  if (!payload || !Array.isArray(payload.jobs)) {
+    return new Map();
+  }
+
+  const map = new Map<string, Record<string, unknown>>();
+
+  for (const item of payload.jobs) {
+    if (typeof item === 'object' && item !== null) {
+      const record = item as Record<string, unknown>;
+      map.set(normalizeJobId(record), record);
+    }
+  }
+
+  return map;
+};
+
 export const readCron = async (db: DbExecutor): Promise<CronDto> => {
   const jobsResult = await db.query<{
     job_id: string;
@@ -202,6 +282,8 @@ export const readCron = async (db: DbExecutor): Promise<CronDto> => {
       LIMIT 200
     `);
 
+  const rawByJobId = await readLatestCronRawJobs(db);
+
   return {
     ok: true,
     apiVersion: API_VERSION,
@@ -213,7 +295,8 @@ export const readCron = async (db: DbExecutor): Promise<CronDto> => {
       scheduleKind: row.schedule_kind,
       enabled: row.enabled,
       nextRunAt: row.next_run_at,
-      updatedAt: row.updated_at
+      updatedAt: row.updated_at,
+      detailsMarkdown: cronDetailsMarkdown(rawByJobId.get(row.job_id) ?? null)
     })),
     runs: runsResult.rows.map<CronRunDto>((row) => ({
       runId: row.run_id,

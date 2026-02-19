@@ -63,6 +63,7 @@ export interface CronJobRecord {
   enabled: boolean;
   nextRunAt: string | null;
   updatedAt: string;
+  detailsMarkdown: string;
 }
 
 export interface CronRunRecord {
