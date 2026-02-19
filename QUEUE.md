@@ -1,6 +1,6 @@
 # Mission Control MVP Queue
 
-Status legend: `DONE` `IN_PROGRESS` `BLOCKED`
+Status legend: `DONE` `IN_PROGRESS` `BLOCKED` `QUEUED`
 
 ## Definition of Done (MVP release gate)
 
@@ -28,6 +28,16 @@ Release is considered done only when all are true:
 | P1 | MC-010 | GitHub publish with commits | DONE | Published: `https://github.com/apollo-ex/openclaw-mission-control` |
 | P1 | MC-011 | Vercel deployment attempt | BLOCKED | Build passed but deployment failed: no Vercel output directory (`public`) for daemon-style service |
 
+## Next Queue (Deployment Track)
+
+| Priority | ID | Task | Status | Notes |
+|---|---|---|---|---|
+| P0 | MC-012 | Scaffold Next.js TypeScript web app (`apps/mission-control-web`) | DONE | App Router scaffold + TypeScript + build scripts added |
+| P0 | MC-013 | Expose read-only API contracts for UI consumption | DONE | Added GET-only contracts + `/api/{contracts,overview,agents,memory,cron,health}` |
+| P1 | MC-014 | Wire dashboard pages (Overview/Agents/Memory/Cron/Health) | DONE | Next.js pages wired to read-only backend API client |
+| P1 | MC-015 | Add hybrid deploy mode doc (local backend + Vercel frontend) | DONE | Added `HYBRID_DEPLOYMENT.md` and release/readme updates |
+| P1 | MC-016 | Vercel deploy + verification | BLOCKED | Deploy succeeded (`mission-control-web-rho.vercel.app`) but returns 500 until `MISSION_CONTROL_API_BASE_URL` targets reachable backend (current fallback `127.0.0.1:4242` unreachable on Vercel) |
+
 ## Exit Checklist
 
 - [x] Queue and done definition documented
@@ -38,3 +48,4 @@ Release is considered done only when all are true:
 - [x] Release + rollback runbook added
 - [x] GitHub remote created and pushed
 - [ ] Vercel deployment verified (attempted; blocked by output-directory mismatch)
+- [x] Next.js deployment track executed (MC-012..MC-016; MC-016 blocked by backend reachability)
