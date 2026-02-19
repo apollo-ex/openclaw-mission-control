@@ -1,10 +1,57 @@
 import { once } from 'node:events';
+import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
 import { createAppServer } from './app.js';
+import { applyMigrations } from './db/migrations.js';
+import { seedDatabase } from './db/seed.js';
 import type { Logger } from './lib/logger.js';
 
-test('app server serves /health and returns JSON 404 on unknown route', async (t) => {
+const makeDatabase = (): DatabaseSync => {
+  const db = new DatabaseSync(':memory:');
+  applyMigrations(db, path.resolve(process.cwd(), 'migrations'));
+  seedDatabase(db);
+
+  db.prepare(
+    `
+      INSERT INTO sessions (session_key, label, status, started_at, ended_at, runtime_ms, model, agent_id, source_snapshot_id, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+    `
+  ).run('session-1', 'Mission Control Scheduler', 'active', '2026-02-19T10:00:00.000Z', null, 15000, 'gpt-5.3-codex', 'local-observer', '2026-02-19T10:00:01.000Z');
+
+  db.prepare(
+    `
+      INSERT INTO cron_jobs (job_id, name, schedule_kind, enabled, next_run_at, source_snapshot_id, updated_at)
+      VALUES (?, ?, ?, ?, ?, NULL, ?)
+    `
+  ).run('cron-1', 'sessions_hot', 'interval', 1, '2026-02-19T10:01:00.000Z', '2026-02-19T10:00:01.000Z');
+
+  db.prepare(
+    `
+      INSERT INTO cron_runs (run_id, job_id, status, started_at, ended_at, summary, source_snapshot_id, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
+    `
+  ).run('run-1', 'cron-1', 'success', '2026-02-19T09:59:00.000Z', '2026-02-19T09:59:05.000Z', 'collector succeeded', '2026-02-19T09:59:05.000Z');
+
+  db.prepare(
+    `
+      INSERT INTO memory_docs (path, kind, updated_at, summary, source_snapshot_id, redacted)
+      VALUES (?, ?, ?, ?, NULL, ?)
+    `
+  ).run('/Users/apollo/.openclaw/workspace/AGENTS.md', 'core', '2026-02-19T09:58:00.000Z', 'Agent system prompt and behavior', 0);
+
+  db.prepare(
+    `
+      INSERT INTO health_samples (sample_id, idempotency_key, ts, openclaw_status, host_stats_json, errors_json, stale, source_snapshot_id)
+      VALUES (?, ?, ?, ?, NULL, ?, ?, NULL)
+    `
+  ).run('health-1', 'health::1', '2026-02-19T10:00:02.000Z', 'ok', '[]', 0);
+
+  return db;
+};
+
+test('app server serves read-only API routes', async (t) => {
   const errors: unknown[] = [];
 
   const log: Logger = {
@@ -16,7 +63,10 @@ test('app server serves /health and returns JSON 404 on unknown route', async (t
     }
   };
 
-  const server = createAppServer(log);
+  const db = makeDatabase();
+  t.after(() => db.close());
+
+  const server = createAppServer(log, db);
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
 
@@ -34,6 +84,43 @@ test('app server serves /health and returns JSON 404 on unknown route', async (t
   const healthResponse = await fetch(`${baseUrl}/health`);
   assert.equal(healthResponse.status, 200);
   assert.deepEqual(await healthResponse.json(), { ok: true, status: 'ok' });
+
+  const contractsResponse = await fetch(`${baseUrl}/api/contracts`);
+  assert.equal(contractsResponse.status, 200);
+  const contractsBody = await contractsResponse.json();
+  assert.equal(contractsBody.ok, true);
+  assert.equal(contractsBody.readOnly, true);
+  assert.equal(typeof contractsBody.endpoints.overview, 'string');
+
+  const overviewResponse = await fetch(`${baseUrl}/api/overview`);
+  assert.equal(overviewResponse.status, 200);
+  const overviewBody = await overviewResponse.json();
+  assert.equal(overviewBody.summary.activeSessions, 1);
+  assert.equal(overviewBody.summary.latestStatus, 'ok');
+
+  const agentsResponse = await fetch(`${baseUrl}/api/agents`);
+  assert.equal(agentsResponse.status, 200);
+  const agentsBody = await agentsResponse.json();
+  assert.equal(agentsBody.agents.length >= 1, true);
+  assert.equal(agentsBody.sessions.length, 1);
+  assert.equal(agentsBody.sessions[0].sessionKey, 'session-1');
+
+  const memoryResponse = await fetch(`${baseUrl}/api/memory`);
+  assert.equal(memoryResponse.status, 200);
+  const memoryBody = await memoryResponse.json();
+  assert.equal(memoryBody.docs.length, 1);
+  assert.equal(memoryBody.docs[0].redacted, false);
+
+  const cronResponse = await fetch(`${baseUrl}/api/cron`);
+  assert.equal(cronResponse.status, 200);
+  const cronBody = await cronResponse.json();
+  assert.equal(cronBody.jobs.length, 1);
+  assert.equal(cronBody.runs[0].status, 'success');
+
+  const statusResponse = await fetch(`${baseUrl}/api/health`);
+  assert.equal(statusResponse.status, 200);
+  const statusBody = await statusResponse.json();
+  assert.equal(statusBody.latest.openclawStatus, 'ok');
 
   const missingResponse = await fetch(`${baseUrl}/missing`);
   assert.equal(missingResponse.status, 404);

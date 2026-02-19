@@ -31,7 +31,7 @@ const main = async (): Promise<void> => {
 
   scheduler.start();
 
-  const server = createAppServer(logger);
+  const server = createAppServer(logger, db);
   server.listen(config.port, config.host, () => {
     logger.info('mission_control_started', {
       host: config.host,
