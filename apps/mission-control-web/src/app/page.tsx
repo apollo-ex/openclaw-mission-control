@@ -48,8 +48,8 @@ export default async function OverviewPage() {
         </article>
       </div>
 
-      <div className="grid" style={{ marginTop: 12 }}>
-        <div className="card" style={{ gridColumn: 'span 8' }}>
+      <div className="grid split-grid" style={{ marginTop: 12 }}>
+        <div className="card split-main">
           <h2>System Signal</h2>
           <div className="stack">
             <div className="signal">
@@ -62,7 +62,7 @@ status=${overview.summary.latestStatus}`}
           </div>
         </div>
 
-        <div className="card" style={{ gridColumn: 'span 4' }}>
+        <div className="card split-side">
           <h2>Status Beacon</h2>
           <p>
             <span className={statusPillClass(overview.summary.latestStatus)}>{overview.summary.latestStatus}</span>
