@@ -1,0 +1,67 @@
+export type SourceType = 'memory' | 'sessions' | 'cron' | 'status';
+
+export interface SourceMetadata {
+  sourceType: SourceType;
+  capturedAt: string;
+  freshnessMs: number;
+  readOnly: true;
+  transport: 'filesystem' | 'command';
+  sourceRef: string;
+}
+
+export interface CollectedSnapshot<T> {
+  metadata: SourceMetadata;
+  data: T;
+  warnings: string[];
+}
+
+export interface ReadonlySourceAdapter<T> {
+  readonly sourceType: SourceType;
+  collect(): Promise<CollectedSnapshot<T>>;
+}
+
+export interface MemoryDocRecord {
+  path: string;
+  kind: 'core' | 'memory';
+  updatedAt: string;
+  content: string;
+}
+
+export interface SessionRecord {
+  sessionKey: string;
+  label: string;
+  status: 'active' | 'recent' | 'unknown';
+  startedAt: string | null;
+  endedAt: string | null;
+  runtimeMs: number | null;
+  model: string | null;
+  agentId: string | null;
+}
+
+export interface CronJobRecord {
+  jobId: string;
+  name: string;
+  scheduleKind: string;
+  enabled: boolean;
+  nextRunAt: string | null;
+}
+
+export interface CronRunRecord {
+  runId: string;
+  jobId: string;
+  status: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  summary: string;
+}
+
+export interface CronSnapshot {
+  jobs: CronJobRecord[];
+  runs: CronRunRecord[];
+}
+
+export interface StatusSnapshot {
+  openclawStatus: 'ok' | 'degraded' | 'offline' | 'unknown';
+  raw: string;
+  errors: string[];
+}
