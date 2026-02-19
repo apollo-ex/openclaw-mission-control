@@ -61,3 +61,20 @@ test('getOverview fetches read-only overview payload', async (t) => {
   assert.equal(payload.readOnly, true);
   assert.equal(payload.summary.latestStatus, 'ok');
 });
+
+test('getOverview falls back safely when API is unreachable', async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () => {
+    throw new Error('network down');
+  }) as typeof fetch;
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const payload = await getOverview();
+  assert.equal(payload.readOnly, true);
+  assert.equal(payload.summary.latestStatus, 'unknown');
+  assert.equal(payload.summary.agents, 0);
+});

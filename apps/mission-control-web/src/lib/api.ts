@@ -7,6 +7,13 @@ interface MissionControlEnv {
   MISSION_CONTROL_API_TOKEN?: string;
 }
 
+const fallbackEnvelope = () => ({
+  ok: true as const,
+  apiVersion: 'v1',
+  generatedAt: new Date().toISOString(),
+  readOnly: true as const
+});
+
 export const resolveApiBaseUrl = (env: MissionControlEnv = process.env as MissionControlEnv): string => {
   const raw = env.MISSION_CONTROL_API_BASE_URL?.trim();
   return raw ? raw.replace(/\/$/, '') : FALLBACK_BASE_URL;
@@ -37,12 +44,53 @@ const fetchJson = async <T>(path: string): Promise<T> => {
   return (await response.json()) as T;
 };
 
-export const getOverview = (): Promise<OverviewResponse> => fetchJson<OverviewResponse>('/api/overview');
+const withFallback = async <T>(loader: () => Promise<T>, fallback: () => T): Promise<T> => {
+  try {
+    return await loader();
+  } catch {
+    return fallback();
+  }
+};
 
-export const getAgents = (): Promise<AgentsResponse> => fetchJson<AgentsResponse>('/api/agents');
+export const getOverview = (): Promise<OverviewResponse> =>
+  withFallback(
+    () => fetchJson<OverviewResponse>('/api/overview'),
+    () => ({
+      ...fallbackEnvelope(),
+      summary: {
+        agents: 0,
+        sessions: 0,
+        activeSessions: 0,
+        memoryDocs: 0,
+        cronJobs: 0,
+        cronRuns: 0,
+        collectorErrors: 1,
+        staleCollectors: 1,
+        latestStatus: 'unknown'
+      }
+    })
+  );
 
-export const getMemory = (): Promise<MemoryResponse> => fetchJson<MemoryResponse>('/api/memory');
+export const getAgents = (): Promise<AgentsResponse> =>
+  withFallback(
+    () => fetchJson<AgentsResponse>('/api/agents'),
+    () => ({ ...fallbackEnvelope(), agents: [], sessions: [] })
+  );
 
-export const getCron = (): Promise<CronResponse> => fetchJson<CronResponse>('/api/cron');
+export const getMemory = (): Promise<MemoryResponse> =>
+  withFallback(
+    () => fetchJson<MemoryResponse>('/api/memory'),
+    () => ({ ...fallbackEnvelope(), redactedDocs: 0, docs: [] })
+  );
 
-export const getHealth = (): Promise<HealthResponse> => fetchJson<HealthResponse>('/api/health');
+export const getCron = (): Promise<CronResponse> =>
+  withFallback(
+    () => fetchJson<CronResponse>('/api/cron'),
+    () => ({ ...fallbackEnvelope(), jobs: [], runs: [] })
+  );
+
+export const getHealth = (): Promise<HealthResponse> =>
+  withFallback(
+    () => fetchJson<HealthResponse>('/api/health'),
+    () => ({ ...fallbackEnvelope(), latest: null, collectors: [] })
+  );
