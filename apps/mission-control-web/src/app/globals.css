@@ -66,6 +66,10 @@ body::before {
   box-shadow: inset 0 0 0 1px #90b3ff1f, 0 24px 64px #00000066;
 }
 
+.command-surface.simple {
+  grid-template-columns: 1fr;
+}
+
 .eyebrow {
   margin: 0;
   color: var(--mc-muted);
@@ -466,6 +470,108 @@ body::before {
   font-size: 12px;
 }
 
+.topology-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.topology-main {
+  border: 1px solid var(--mc-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0b1224f0, #0a1020f2);
+  min-height: 560px;
+  overflow: hidden;
+}
+
+.graph-wrap {
+  width: 100%;
+  height: 560px;
+}
+
+.topology-inspector {
+  border: 1px solid var(--mc-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0d162cf0, #0a1020f2);
+  padding: 12px;
+}
+
+.topology-inspector h3 {
+  margin: 6px 0 10px;
+  font-size: 18px;
+}
+
+.topology-inspector ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.topology-inspector li {
+  border: 1px solid #2a395a;
+  border-radius: 10px;
+  background: #0a1429ba;
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.topology-inspector span {
+  color: var(--mc-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.topology-inspector strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.flow-node {
+  min-width: 190px;
+  max-width: 230px;
+  border: 1px solid #38537f;
+  border-radius: 10px;
+  padding: 8px;
+  background: #09142d;
+  box-shadow: inset 0 0 0 1px #8db8ff1a;
+}
+
+.flow-node p {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--mc-muted);
+}
+
+.flow-node strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.flow-node small {
+  display: block;
+  color: #9eb4d8;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.flow-node div {
+  margin-top: 6px;
+  color: #cfe0fd;
+  font-size: 12px;
+}
+
+.flow-active { border-color: #53b6ff; }
+.flow-healthy { border-color: #54d8a8; }
+.flow-degraded { border-color: #ffcd6e; }
+.flow-error { border-color: #ff6f91; }
+.flow-inactive { border-color: #5d6f93; opacity: 0.86; }
+.flow-neutral { border-color: #6d85b0; }
+
 .stream-grid,
 .memory-grid {
   display: grid;
@@ -513,6 +619,16 @@ body::before {
 
   .mesh-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topology-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-wrap,
+  .topology-main {
+    min-height: 480px;
+    height: 480px;
   }
 }
 
