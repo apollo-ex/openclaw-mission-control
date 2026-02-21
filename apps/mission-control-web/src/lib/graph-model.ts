@@ -9,6 +9,7 @@ export interface TopologyNodeData {
   subtitle: string;
   status: 'active' | 'healthy' | 'degraded' | 'error' | 'inactive' | 'neutral';
   output: string;
+  activity: string[];
   sessionKey?: string | null;
   agentId?: string | null;
 }
@@ -63,19 +64,43 @@ export const buildTopologyGraph = (
     activeByAgent.set(key, current);
   }
 
+  const activityBySession = new Map<string, string[]>();
+  for (const msg of streamPayload.messages) {
+    if (!msg.sessionKey) continue;
+    const current = activityBySession.get(msg.sessionKey) ?? [];
+    if (current.length < 3) {
+      current.push(`${msg.role}: ${(msg.textPreview ?? 'no text').slice(0, 42)}`);
+    }
+    activityBySession.set(msg.sessionKey, current);
+  }
+
+  for (const tool of streamPayload.tools) {
+    if (!tool.sessionKey) continue;
+    const current = activityBySession.get(tool.sessionKey) ?? [];
+    if (current.length < 4) {
+      current.push(`tool: ${tool.toolName ?? 'unknown'}${tool.durationMs !== null ? ` (${tool.durationMs}ms)` : ''}`);
+    }
+    activityBySession.set(tool.sessionKey, current);
+  }
+
   const agentList = agentsPayload.agents.slice(0, 10);
 
   agentList.forEach((agent, i) => {
     const actives = activeByAgent.get(agent.agentId)?.length ?? 0;
+    const agentActivity = (activeByAgent.get(agent.agentId) ?? [])
+      .flatMap((session) => activityBySession.get(session.sessionKey) ?? [])
+      .slice(0, 3);
+
     nodes.push({
       id: `agent:${agent.agentId}`,
-      position: { x: 30, y: 70 + i * 120 },
+      position: { x: 30, y: 70 + i * 140 },
       data: {
         kind: 'agent',
         title: agent.agentId,
         subtitle: agent.configured ? 'configured' : 'needs config',
         status: actives > 0 ? 'active' : 'inactive',
         output: `${actives} active sessions`,
+        activity: agentActivity.length > 0 ? agentActivity : ['idle'],
         agentId: agent.agentId
       }
     });
@@ -86,13 +111,14 @@ export const buildTopologyGraph = (
     const messageCount = messagesBySession.get(session.sessionKey) ?? 0;
     nodes.push({
       id: `session:${session.sessionKey}`,
-      position: { x: 430, y: 70 + i * 98 },
+      position: { x: 470, y: 70 + i * 120 },
       data: {
         kind: 'session',
         title: session.label || session.sessionKey,
         subtitle: session.runType,
         status: 'active',
         output: `${messageCount} msgs · ${toolCount} tool calls`,
+        activity: activityBySession.get(session.sessionKey) ?? ['no recent events'],
         sessionKey: session.sessionKey,
         agentId: session.agentId
       }
@@ -116,13 +142,14 @@ export const buildTopologyGraph = (
 
     nodes.push({
       id: `cron:${job.jobId}`,
-      position: { x: 840, y: 90 + i * 110 },
+      position: { x: 960, y: 90 + i * 120 },
       data: {
         kind: 'cron',
         title: job.name,
         subtitle: job.enabled ? 'enabled' : 'disabled',
         status: hasError ? 'error' : job.enabled ? 'healthy' : 'inactive',
-        output: `next: ${job.nextRunAt ? new Date(job.nextRunAt).toLocaleTimeString() : '—'}`
+        output: `next: ${job.nextRunAt ? new Date(job.nextRunAt).toLocaleTimeString() : '—'}`,
+        activity: [lastRun ? `last: ${lastRun.status}` : 'no recent runs']
       }
     });
 
@@ -141,13 +168,14 @@ export const buildTopologyGraph = (
 
   nodes.push({
     id: 'health:global',
-    position: { x: 840, y: 20 },
+    position: { x: 960, y: 20 },
     data: {
       kind: 'health',
       title: 'Health Monitor',
       subtitle: healthPayload.latest?.openclawStatus ?? 'unknown',
       status: healthStatus(healthPayload.latest),
-      output: `${healthPayload.collectors.filter((c) => c.stale || c.errorCount > 0).length} collector alerts`
+      output: `${healthPayload.collectors.filter((c) => c.stale || c.errorCount > 0).length} collector alerts`,
+      activity: (healthPayload.latest?.errors ?? []).slice(0, 3).map((e) => `error: ${e.slice(0, 42)}`)
     }
   });
 

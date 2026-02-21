@@ -18,7 +18,6 @@ import type { TopologyEdgeData, TopologyNodeData } from '@/lib/graph-model';
 interface TopologyGraphProps {
   nodes: Array<{ id: string; data: TopologyNodeData; position: { x: number; y: number } }>;
   edges: Array<{ id: string; source: string; target: string; data: TopologyEdgeData }>;
-  onSelect?: (node: TopologyNodeData | null) => void;
 }
 
 const nodeClass = (status: TopologyNodeData['status']): string => `flow-node flow-${status}`;
@@ -31,13 +30,18 @@ const GraphNode = memo(({ data }: NodeProps<Node<TopologyNodeData>>) => {
       <strong>{data.title}</strong>
       <small>{data.subtitle}</small>
       <div>{data.output}</div>
+      <ul>
+        {data.activity.slice(0, 3).map((line, idx) => (
+          <li key={`${data.title}-${idx}`}>{line}</li>
+        ))}
+      </ul>
       <Handle type="source" position={Position.Right} />
     </div>
   );
 });
 GraphNode.displayName = 'GraphNode';
 
-export function TopologyGraph({ nodes, edges, onSelect }: TopologyGraphProps) {
+export function TopologyGraph({ nodes, edges }: TopologyGraphProps) {
   const rfNodes: Node[] = nodes.map((node) => ({
     ...node,
     type: 'topology'
@@ -55,13 +59,7 @@ export function TopologyGraph({ nodes, edges, onSelect }: TopologyGraphProps) {
 
   return (
     <div className="graph-wrap" role="img" aria-label="Mission control topology graph">
-      <ReactFlow
-        nodes={rfNodes}
-        edges={rfEdges}
-        nodeTypes={{ topology: GraphNode }}
-        fitView
-        onNodeClick={(_, node) => onSelect?.((node.data as TopologyNodeData) ?? null)}
-      >
+      <ReactFlow nodes={rfNodes} edges={rfEdges} nodeTypes={{ topology: GraphNode }} fitView>
         <Background gap={20} size={1} color="#1f3359" />
         <Controls />
         <MiniMap pannable zoomable />

@@ -12,9 +12,7 @@ export const runtime = 'nodejs';
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>
-        <div className="mc-shell">{children}</div>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
