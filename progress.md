@@ -30,3 +30,8 @@
   - Backend: `npm run test:ci`
   - Frontend: `npm run test:ci`
   - Backend smoke: `/health` and `/api/contracts`
+- Added granular session stream ingestion + stream UI panel (messages/tool calls) and deployed.
+- Started new UI architecture pass (graph-first operator view):
+  - audited current main page via agent-browser desktop/mobile screenshots
+  - documented key bottlenecks in `findings.md`
+  - reset `task_plan.md` for phased node/edge redesign execution

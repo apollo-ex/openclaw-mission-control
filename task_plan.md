@@ -1,16 +1,21 @@
 # task_plan.md
 
 ## Objective
-Implement P0/P1 kickoff for OpenClaw Mission Control (MC-001..MC-004 minimum, begin MC-005).
+Overhaul Mission Control main UI into a clear node/edge operator view: "this node produces this output" with minimal confusion between active/inactive runtime elements.
 
-## Ticket plan
-- [x] MC-001: Bootstrap service, env/config, logger, error boundary, `/health`.
-- [x] MC-002: Read-only typed source adapters with freshness/source metadata.
-- [x] MC-003: SQLite schema + migrations + seed + idempotent upserts.
-- [x] MC-004: Collector scheduler with hot/warm cadence, retry/backoff, stale markers.
-- [x] MC-005 (partial): redaction utility and ingest-boundary integration for text payloads.
+## Phased plan (UI overhaul)
+- [x] Phase 0: Audit current main UI (desktop + mobile) and identify comprehension bottlenecks.
+- [ ] Phase 1: Define simplified information architecture (Graph-first + Details + Stream).
+- [ ] Phase 2: Design node/edge data model from existing payloads (agents/sessions/cron/health/stream).
+- [ ] Phase 3: Build React Flow prototype (`@xyflow/react`) with read-only custom nodes/edges.
+- [ ] Phase 4: Integrate detail panel (selected node/edge contextual data) and improve labels/states.
+- [ ] Phase 5: Mobile strategy (fallback compact list + optional graph mini-map) and polish.
+- [ ] Phase 6: Verify with agent-browser (desktop/mobile) + tests + deploy.
 
 ## Verification plan
-- Run migrations + seed on fresh DB.
-- Run unit tests for adapters/redaction/db/scheduler behavior.
-- Start dev server and verify `/health` returns `ok`.
+- Validate that a user can answer in <5 seconds:
+  1) Which agents/sessions are active now?
+  2) What is each active node producing?
+  3) Where are current errors/failures?
+- Run frontend tests + build.
+- Run agent-browser screenshot audit on `/` for desktop and mobile before/after.
