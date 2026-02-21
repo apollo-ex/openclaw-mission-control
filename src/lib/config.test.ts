@@ -10,8 +10,8 @@ test('loadConfig returns defaults when env vars are absent', () => {
   assert.equal(config.databaseUrl.startsWith('postgresql://'), true);
   assert.equal(config.databaseUrlDirect, config.databaseUrl);
   assert.equal(config.apiToken, null);
-  assert.equal(config.hotIntervalMs, 10_000);
-  assert.equal(config.warmIntervalMs, 120_000);
+  assert.equal(config.hotIntervalMs, 300_000);
+  assert.equal(config.warmIntervalMs, 900_000);
   assert.equal(config.collectorMaxRetries, 3);
   assert.equal(config.collectorBackoffBaseMs, 500);
   assert.equal(config.collectorBackoffMaxMs, 10_000);

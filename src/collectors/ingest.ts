@@ -17,12 +17,24 @@ const hashPayload = (payload: unknown): string => {
 };
 
 export const ingestSessionsSnapshot = async (db: DbExecutor, snapshot: CollectedSnapshot<SessionRecord[]>): Promise<void> => {
+  const compactSessionsPayload = {
+    total: snapshot.data.length,
+    active: snapshot.data.filter((row) => row.status === 'active').length,
+    sessions: snapshot.data.slice(0, 200).map((row) => ({
+      sessionKey: row.sessionKey,
+      status: row.status,
+      agentId: row.agentId,
+      runType: row.runType,
+      lastUpdateAt: row.lastUpdateAt
+    }))
+  };
+
   const snapshotId = await upsertSourceSnapshot(db, {
     sourceType: snapshot.metadata.sourceType,
     capturedAt: snapshot.metadata.capturedAt,
-    payloadHash: hashPayload(snapshot.data),
+    payloadHash: hashPayload(compactSessionsPayload),
     metadata: snapshot.metadata,
-    payload: snapshot.data
+    payload: compactSessionsPayload
   });
 
   await upsertSessions(db, snapshot.data, snapshotId);
@@ -40,12 +52,30 @@ export const ingestSessionsSnapshot = async (db: DbExecutor, snapshot: Collected
 };
 
 export const ingestCronSnapshot = async (db: DbExecutor, snapshot: CollectedSnapshot<CronSnapshot>): Promise<void> => {
+  const compactCronPayload = {
+    jobs: snapshot.data.jobs.map((job) => ({
+      jobId: job.jobId,
+      name: job.name,
+      scheduleKind: job.scheduleKind,
+      enabled: job.enabled,
+      nextRunAt: job.nextRunAt
+    })),
+    runs: snapshot.data.runs.slice(0, 200).map((run) => ({
+      runId: run.runId,
+      jobId: run.jobId,
+      status: run.status,
+      startedAt: run.startedAt,
+      endedAt: run.endedAt,
+      summary: run.summary
+    }))
+  };
+
   const snapshotId = await upsertSourceSnapshot(db, {
     sourceType: snapshot.metadata.sourceType,
     capturedAt: snapshot.metadata.capturedAt,
-    payloadHash: hashPayload(snapshot.data),
+    payloadHash: hashPayload(compactCronPayload),
     metadata: snapshot.metadata,
-    payload: snapshot.data
+    payload: compactCronPayload
   });
 
   await upsertCronJobs(db, snapshot.data.jobs, snapshotId);
@@ -100,19 +130,22 @@ export const ingestMemorySnapshot = async (db: DbExecutor, snapshot: CollectedSn
 export const ingestStatusSnapshot = async (db: DbExecutor, snapshot: CollectedSnapshot<StatusSnapshot>): Promise<void> => {
   const redactedRaw = redactText(snapshot.data.raw, snapshot.metadata.sourceRef);
 
+  const compactStatusPayload = {
+    openclawStatus: snapshot.data.openclawStatus,
+    errors: snapshot.data.errors,
+    rawSummary: redactedRaw.value.slice(0, 2048),
+    redactionIndicators: redactedRaw.indicators
+  };
+
   const snapshotId = await upsertSourceSnapshot(db, {
     sourceType: snapshot.metadata.sourceType,
     capturedAt: snapshot.metadata.capturedAt,
-    payloadHash: hashPayload({ ...snapshot.data, raw: redactedRaw.value }),
+    payloadHash: hashPayload(compactStatusPayload),
     metadata: snapshot.metadata,
-    payload: {
-      ...snapshot.data,
-      raw: redactedRaw.value,
-      redactionIndicators: redactedRaw.indicators
-    }
+    payload: compactStatusPayload
   });
 
-  await upsertHealthSample(db, { ...snapshot.data, raw: redactedRaw.value }, snapshotId, false);
+  await upsertHealthSample(db, { ...snapshot.data, raw: redactedRaw.value.slice(0, 2048) }, snapshotId, false);
 
   for (const warning of snapshot.warnings) {
     const redactedWarning = redactText(warning, snapshot.metadata.sourceRef);

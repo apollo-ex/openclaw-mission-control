@@ -46,7 +46,7 @@ export default async function MissionControlPage() {
         <small>
           {stream.eventsPerMinute}/min · {lines.length} lines · updated {new Date(stream.generatedAt).toISOString()}
         </small>
-        <AutoRefresh intervalMs={3000} />
+        <AutoRefresh intervalMs={60_000} />
       </header>
 
       <section className="stream-console-list" aria-label="Live agent text stream">

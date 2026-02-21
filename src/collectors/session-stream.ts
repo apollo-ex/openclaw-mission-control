@@ -66,6 +66,35 @@ const extractTextPreview = (message: Record<string, unknown>): string | null => 
 const eventIdFromLine = (line: string, lineNumber: number): string =>
   `line_${lineNumber}_${crypto.createHash('sha1').update(line).digest('hex').slice(0, 10)}`;
 
+const compactEventJson = (parsed: Record<string, unknown>): Record<string, unknown> => {
+  const compact: Record<string, unknown> = {
+    id: parsed.id ?? null,
+    type: parsed.type ?? 'unknown',
+    timestamp: parsed.timestamp ?? null,
+    parentId: parsed.parentId ?? null
+  };
+
+  const message = parsed.message;
+  if (typeof message === 'object' && message !== null) {
+    const msg = message as Record<string, unknown>;
+    compact.message = {
+      role: typeof msg.role === 'string' ? msg.role : null,
+      model: typeof msg.model === 'string' ? msg.model : null,
+      provider: typeof msg.provider === 'string' ? msg.provider : null,
+      stopReason: typeof msg.stopReason === 'string' ? msg.stopReason : null,
+      textPreview: extractTextPreview(msg)
+    };
+
+    if (msg.role === 'toolResult') {
+      (compact.message as Record<string, unknown>).toolCallId = typeof msg.toolCallId === 'string' ? msg.toolCallId : null;
+      (compact.message as Record<string, unknown>).toolName = typeof msg.toolName === 'string' ? msg.toolName : null;
+      (compact.message as Record<string, unknown>).isError = Boolean(msg.isError);
+    }
+  }
+
+  return compact;
+};
+
 const parseOpenClawSessions = async (): Promise<TranscriptTarget[]> => {
   const { execFile } = await import('node:child_process');
 
@@ -288,7 +317,7 @@ export const ingestSessionStream = async (db: DbExecutor): Promise<void> => {
         eventType,
         eventTs,
         sourceLine: lineNumber,
-        rawJson: parsed
+        rawJson: compactEventJson(parsed)
       });
 
       const message = parsed.message;

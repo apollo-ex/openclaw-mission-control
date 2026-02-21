@@ -173,13 +173,13 @@ test('ingestStatusSnapshot redacts raw/warnings and stores health sample', async
     const statusEvent = await db.query<{ details: string }>('SELECT details FROM events WHERE category = $1 LIMIT 1', ['status']);
     assert.equal(statusEvent.rows[0]?.details, '[REDACTED:EXCLUDED_PATH]');
 
-    const snapshotResult = await db.query<{ payload_json: { raw: string; redactionIndicators: string[] } }>(
+    const snapshotResult = await db.query<{ payload_json: { rawSummary: string; redactionIndicators: string[] } }>(
       'SELECT payload_json FROM source_snapshots WHERE source_type = $1 LIMIT 1',
       ['status']
     );
 
     const payload = snapshotResult.rows[0]?.payload_json;
-    assert.equal(payload?.raw, '[REDACTED:EXCLUDED_PATH]');
+    assert.equal(payload?.rawSummary, '[REDACTED:EXCLUDED_PATH]');
     assert.equal(payload?.redactionIndicators.includes('path_excluded'), true);
   });
 });
