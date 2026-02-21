@@ -387,7 +387,7 @@ export const readStream = async (db: DbExecutor): Promise<StreamDto> => {
   const rateResult = await db.query<{ events_per_minute: string }>(`
       SELECT COUNT(*)::text AS events_per_minute
       FROM session_events
-      WHERE event_ts >= NOW() - INTERVAL '1 minute'
+      WHERE created_at >= NOW() - INTERVAL '1 minute'
     `);
 
   return {
