@@ -1,4 +1,5 @@
 import type { AgentsResponse, CronResponse, HealthResponse, StreamResponse } from './contracts';
+import { layoutWithDagre } from './layout-dagre';
 
 export type TopologyNodeKind = 'agent' | 'session' | 'cron' | 'health';
 
@@ -25,13 +26,14 @@ export interface TopologyGraph {
   edges: Array<{ id: string; source: string; target: string; data: TopologyEdgeData }>;
 }
 
-const healthStatus = (status: HealthResponse['latest'] extends infer T ? T : never): TopologyNodeData['status'] => {
-  const s = (status as HealthResponse['latest'])?.openclawStatus;
+const statusFromHealth = (s: string | undefined): TopologyNodeData['status'] => {
   if (s === 'ok') return 'healthy';
-  if (s === 'offline') return 'error';
   if (s === 'degraded') return 'degraded';
+  if (s === 'offline') return 'error';
   return 'neutral';
 };
+
+const clip = (v: string, n = 42): string => (v.length > n ? `${v.slice(0, n)}…` : v);
 
 export const buildTopologyGraph = (
   agentsPayload: AgentsResponse,
@@ -42,142 +44,132 @@ export const buildTopologyGraph = (
   const nodes: TopologyGraph['nodes'] = [];
   const edges: TopologyGraph['edges'] = [];
 
-  const activeSessions = agentsPayload.sessions.filter((session) => session.status === 'active').slice(0, 14);
+  const activeSessions = agentsPayload.sessions.filter((s) => s.status === 'active').slice(0, 16);
+  const knownSessionKeys = new Set(activeSessions.map((s) => s.sessionKey));
 
-  const toolsBySession = new Map<string, number>();
-  for (const tool of streamPayload.tools) {
-    if (!tool.sessionKey) continue;
-    toolsBySession.set(tool.sessionKey, (toolsBySession.get(tool.sessionKey) ?? 0) + 1);
+  const messagesBySession = new Map<string, string[]>();
+  const toolsBySession = new Map<string, string[]>();
+
+  for (const msg of streamPayload.messages) {
+    if (!msg.sessionKey || !knownSessionKeys.has(msg.sessionKey)) continue;
+    const arr = messagesBySession.get(msg.sessionKey) ?? [];
+    if (arr.length < 2) arr.push(`${msg.role}: ${clip(msg.textPreview ?? 'no text')}`);
+    messagesBySession.set(msg.sessionKey, arr);
   }
 
-  const messagesBySession = new Map<string, number>();
-  for (const msg of streamPayload.messages) {
-    if (!msg.sessionKey) continue;
-    messagesBySession.set(msg.sessionKey, (messagesBySession.get(msg.sessionKey) ?? 0) + 1);
+  for (const tool of streamPayload.tools) {
+    if (!tool.sessionKey || !knownSessionKeys.has(tool.sessionKey)) continue;
+    const arr = toolsBySession.get(tool.sessionKey) ?? [];
+    if (arr.length < 2) arr.push(`tool: ${tool.toolName ?? 'unknown'}${tool.durationMs !== null ? ` (${tool.durationMs}ms)` : ''}`);
+    toolsBySession.set(tool.sessionKey, arr);
   }
 
   const activeByAgent = new Map<string, typeof activeSessions>();
   for (const session of activeSessions) {
-    const key = session.agentId ?? 'unassigned-agent';
-    const current = activeByAgent.get(key) ?? [];
-    current.push(session);
-    activeByAgent.set(key, current);
+    const k = session.agentId ?? 'unassigned-agent';
+    const arr = activeByAgent.get(k) ?? [];
+    arr.push(session);
+    activeByAgent.set(k, arr);
   }
 
-  const activityBySession = new Map<string, string[]>();
-  for (const msg of streamPayload.messages) {
-    if (!msg.sessionKey) continue;
-    const current = activityBySession.get(msg.sessionKey) ?? [];
-    if (current.length < 3) {
-      current.push(`${msg.role}: ${(msg.textPreview ?? 'no text').slice(0, 42)}`);
-    }
-    activityBySession.set(msg.sessionKey, current);
-  }
-
-  for (const tool of streamPayload.tools) {
-    if (!tool.sessionKey) continue;
-    const current = activityBySession.get(tool.sessionKey) ?? [];
-    if (current.length < 4) {
-      current.push(`tool: ${tool.toolName ?? 'unknown'}${tool.durationMs !== null ? ` (${tool.durationMs}ms)` : ''}`);
-    }
-    activityBySession.set(tool.sessionKey, current);
-  }
-
-  const agentList = agentsPayload.agents.slice(0, 10);
-
-  agentList.forEach((agent, i) => {
-    const actives = activeByAgent.get(agent.agentId)?.length ?? 0;
-    const agentActivity = (activeByAgent.get(agent.agentId) ?? [])
-      .flatMap((session) => activityBySession.get(session.sessionKey) ?? [])
-      .slice(0, 3);
+  for (const agent of agentsPayload.agents.slice(0, 12)) {
+    const active = activeByAgent.get(agent.agentId) ?? [];
+    const lines = active.flatMap((s) => [...(messagesBySession.get(s.sessionKey) ?? []), ...(toolsBySession.get(s.sessionKey) ?? [])]).slice(0, 2);
 
     nodes.push({
       id: `agent:${agent.agentId}`,
-      position: { x: 30, y: 70 + i * 140 },
+      position: { x: 0, y: 0 },
       data: {
         kind: 'agent',
         title: agent.agentId,
-        subtitle: agent.configured ? 'configured' : 'needs config',
-        status: actives > 0 ? 'active' : 'inactive',
-        output: `${actives} active sessions`,
-        activity: agentActivity.length > 0 ? agentActivity : ['idle'],
+        subtitle: active.length > 0 ? 'active' : 'idle',
+        status: active.length > 0 ? 'active' : 'inactive',
+        output: `${active.length} active sessions`,
+        activity: lines.length > 0 ? lines : ['no recent activity'],
         agentId: agent.agentId
       }
     });
-  });
+  }
 
-  activeSessions.forEach((session, i) => {
-    const toolCount = toolsBySession.get(session.sessionKey) ?? 0;
-    const messageCount = messagesBySession.get(session.sessionKey) ?? 0;
+  for (const session of activeSessions) {
+    const msgs = messagesBySession.get(session.sessionKey) ?? [];
+    const tools = toolsBySession.get(session.sessionKey) ?? [];
+
     nodes.push({
       id: `session:${session.sessionKey}`,
-      position: { x: 470, y: 70 + i * 120 },
+      position: { x: 0, y: 0 },
       data: {
         kind: 'session',
         title: session.label || session.sessionKey,
         subtitle: session.runType,
         status: 'active',
-        output: `${messageCount} msgs · ${toolCount} tool calls`,
-        activity: activityBySession.get(session.sessionKey) ?? ['no recent events'],
+        output: `${msgs.length} msg · ${tools.length} tool`,
+        activity: [...msgs, ...tools].slice(0, 2),
         sessionKey: session.sessionKey,
         agentId: session.agentId
       }
     });
 
-    const source = `agent:${session.agentId ?? 'unassigned-agent'}`;
     edges.push({
-      id: `edge:${source}->session:${session.sessionKey}`,
-      source,
+      id: `edge:agent:${session.agentId ?? 'unassigned-agent'}->session:${session.sessionKey}`,
+      source: `agent:${session.agentId ?? 'unassigned-agent'}`,
       target: `session:${session.sessionKey}`,
-      data: {
-        relation: 'produces',
-        status: 'healthy'
-      }
+      data: { relation: 'produces', status: 'healthy' }
     });
-  });
+  }
 
-  cronPayload.jobs.slice(0, 8).forEach((job, i) => {
-    const lastRun = cronPayload.runs.find((run) => run.jobId === job.jobId);
-    const hasError = Boolean(lastRun && /fail|error/i.test(lastRun.status));
+  const latestRunByJobId = new Map<string, string>();
+  for (const run of cronPayload.runs) {
+    if (!latestRunByJobId.has(run.jobId)) latestRunByJobId.set(run.jobId, run.status);
+  }
+
+  for (const job of cronPayload.jobs.slice(0, 10)) {
+    const runStatus = latestRunByJobId.get(job.jobId);
+    const hasError = runStatus ? /fail|error/i.test(runStatus) : false;
 
     nodes.push({
       id: `cron:${job.jobId}`,
-      position: { x: 960, y: 90 + i * 120 },
+      position: { x: 0, y: 0 },
       data: {
         kind: 'cron',
         title: job.name,
         subtitle: job.enabled ? 'enabled' : 'disabled',
         status: hasError ? 'error' : job.enabled ? 'healthy' : 'inactive',
-        output: `next: ${job.nextRunAt ? new Date(job.nextRunAt).toLocaleTimeString() : '—'}`,
-        activity: [lastRun ? `last: ${lastRun.status}` : 'no recent runs']
+        output: `next ${job.nextRunAt ? new Date(job.nextRunAt).toLocaleTimeString() : '—'}`,
+        activity: [runStatus ? `last: ${runStatus}` : 'no recent runs']
       }
     });
 
-    if (activeSessions[i]) {
+    if (activeSessions[0]) {
       edges.push({
-        id: `edge:cron:${job.jobId}->session:${activeSessions[i].sessionKey}`,
+        id: `edge:cron:${job.jobId}->session:${activeSessions[0].sessionKey}`,
         source: `cron:${job.jobId}`,
-        target: `session:${activeSessions[i].sessionKey}`,
-        data: {
-          relation: 'triggers',
-          status: hasError ? 'error' : 'neutral'
-        }
+        target: `session:${activeSessions[0].sessionKey}`,
+        data: { relation: 'triggers', status: hasError ? 'error' : 'neutral' }
       });
     }
-  });
+  }
 
   nodes.push({
     id: 'health:global',
-    position: { x: 960, y: 20 },
+    position: { x: 0, y: 0 },
     data: {
       kind: 'health',
-      title: 'Health Monitor',
+      title: 'health',
       subtitle: healthPayload.latest?.openclawStatus ?? 'unknown',
-      status: healthStatus(healthPayload.latest),
-      output: `${healthPayload.collectors.filter((c) => c.stale || c.errorCount > 0).length} collector alerts`,
-      activity: (healthPayload.latest?.errors ?? []).slice(0, 3).map((e) => `error: ${e.slice(0, 42)}`)
+      status: statusFromHealth(healthPayload.latest?.openclawStatus),
+      output: `${healthPayload.collectors.filter((c) => c.stale || c.errorCount > 0).length} alerts`,
+      activity: (healthPayload.latest?.errors ?? []).slice(0, 2).map((e) => clip(`error: ${e}`)).concat((healthPayload.latest?.errors?.length ?? 0) === 0 ? ['no active health errors'] : [])
     }
   });
 
-  return { nodes, edges };
+  const laidOut = layoutWithDagre(nodes, edges, {
+    direction: 'LR',
+    nodeWidth: 230,
+    nodeHeight: 130,
+    rankSep: 160,
+    nodeSep: 58
+  });
+
+  return { nodes: laidOut, edges };
 };
