@@ -11,7 +11,7 @@ interface TopologyPanelProps {
 function formatGeneratedAtLabel(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return 'Updated: unknown';
-  return `Updated: ${date.toLocaleString()}`;
+  return `Updated: ${date.toISOString().replace('T', ' ').replace('Z', ' UTC')}`;
 }
 
 function isStale(iso: string, thresholdMs = 15 * 60 * 1000): boolean {
