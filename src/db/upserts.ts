@@ -308,3 +308,220 @@ export const markCollectorFailure = async (
     [collectorName, now, stale, errorMessage]
   );
 };
+
+export interface SessionStreamOffsetInput {
+  sessionId: string;
+  sessionKey: string | null;
+  transcriptPath: string;
+  lastByteOffset: number;
+  lastLineNumber: number;
+}
+
+export const upsertSessionStreamOffset = async (db: DbExecutor, input: SessionStreamOffsetInput): Promise<void> => {
+  await db.query(
+    `
+      INSERT INTO session_stream_offsets (
+        session_id,
+        session_key,
+        transcript_path,
+        last_byte_offset,
+        last_line_number,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, NOW())
+      ON CONFLICT(session_id) DO UPDATE SET
+        session_key = excluded.session_key,
+        transcript_path = excluded.transcript_path,
+        last_byte_offset = excluded.last_byte_offset,
+        last_line_number = excluded.last_line_number,
+        updated_at = NOW()
+    `,
+    [input.sessionId, input.sessionKey, input.transcriptPath, input.lastByteOffset, input.lastLineNumber]
+  );
+};
+
+export interface SessionEventInput {
+  sessionId: string;
+  sessionKey: string | null;
+  eventId: string;
+  parentEventId: string | null;
+  eventType: string;
+  eventTs: string;
+  sourceLine: number;
+  rawJson: unknown;
+}
+
+export const insertSessionEvent = async (db: DbExecutor, input: SessionEventInput): Promise<void> => {
+  await db.query(
+    `
+      INSERT INTO session_events (
+        session_id,
+        session_key,
+        event_id,
+        parent_event_id,
+        event_type,
+        event_ts,
+        source_line,
+        raw_json
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+      ON CONFLICT(session_id, event_id) DO NOTHING
+    `,
+    [
+      input.sessionId,
+      input.sessionKey,
+      input.eventId,
+      input.parentEventId,
+      input.eventType,
+      input.eventTs,
+      input.sourceLine,
+      JSON.stringify(input.rawJson)
+    ]
+  );
+};
+
+export interface SessionMessageInput {
+  sessionId: string;
+  sessionKey: string | null;
+  eventId: string;
+  role: string;
+  messageTs: string;
+  textPreview: string | null;
+  provider: string | null;
+  model: string | null;
+  stopReason: string | null;
+  usageInput: number | null;
+  usageOutput: number | null;
+  usageTotal: number | null;
+}
+
+export const upsertSessionMessage = async (db: DbExecutor, input: SessionMessageInput): Promise<void> => {
+  await db.query(
+    `
+      INSERT INTO session_messages (
+        session_id,
+        session_key,
+        event_id,
+        role,
+        message_ts,
+        text_preview,
+        provider,
+        model,
+        stop_reason,
+        usage_input,
+        usage_output,
+        usage_total
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ON CONFLICT(session_id, event_id) DO UPDATE SET
+        session_key = excluded.session_key,
+        role = excluded.role,
+        message_ts = excluded.message_ts,
+        text_preview = excluded.text_preview,
+        provider = excluded.provider,
+        model = excluded.model,
+        stop_reason = excluded.stop_reason,
+        usage_input = excluded.usage_input,
+        usage_output = excluded.usage_output,
+        usage_total = excluded.usage_total
+    `,
+    [
+      input.sessionId,
+      input.sessionKey,
+      input.eventId,
+      input.role,
+      input.messageTs,
+      input.textPreview,
+      input.provider,
+      input.model,
+      input.stopReason,
+      input.usageInput,
+      input.usageOutput,
+      input.usageTotal
+    ]
+  );
+};
+
+export interface ToolCallInput {
+  sessionId: string;
+  sessionKey: string | null;
+  toolCallId: string;
+  eventIdCall: string | null;
+  toolName: string | null;
+  argumentsJson: unknown;
+  startedAt: string;
+}
+
+export const upsertToolCall = async (db: DbExecutor, input: ToolCallInput): Promise<void> => {
+  await db.query(
+    `
+      INSERT INTO tool_spans (
+        session_id,
+        session_key,
+        tool_call_id,
+        event_id_call,
+        tool_name,
+        arguments_json,
+        started_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, NOW())
+      ON CONFLICT(session_id, tool_call_id) DO UPDATE SET
+        session_key = excluded.session_key,
+        event_id_call = COALESCE(excluded.event_id_call, tool_spans.event_id_call),
+        tool_name = COALESCE(excluded.tool_name, tool_spans.tool_name),
+        arguments_json = COALESCE(excluded.arguments_json, tool_spans.arguments_json),
+        started_at = COALESCE(excluded.started_at, tool_spans.started_at),
+        updated_at = NOW()
+    `,
+    [input.sessionId, input.sessionKey, input.toolCallId, input.eventIdCall, input.toolName, JSON.stringify(input.argumentsJson), input.startedAt]
+  );
+};
+
+export interface ToolResultInput {
+  sessionId: string;
+  sessionKey: string | null;
+  toolCallId: string;
+  eventIdResult: string | null;
+  toolName: string | null;
+  resultJson: unknown;
+  isError: boolean;
+  finishedAt: string;
+}
+
+export const upsertToolResult = async (db: DbExecutor, input: ToolResultInput): Promise<void> => {
+  await db.query(
+    `
+      INSERT INTO tool_spans (
+        session_id,
+        session_key,
+        tool_call_id,
+        event_id_result,
+        tool_name,
+        result_json,
+        is_error,
+        finished_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, NOW())
+      ON CONFLICT(session_id, tool_call_id) DO UPDATE SET
+        session_key = excluded.session_key,
+        event_id_result = COALESCE(excluded.event_id_result, tool_spans.event_id_result),
+        tool_name = COALESCE(excluded.tool_name, tool_spans.tool_name),
+        result_json = COALESCE(excluded.result_json, tool_spans.result_json),
+        is_error = excluded.is_error,
+        finished_at = COALESCE(excluded.finished_at, tool_spans.finished_at),
+        duration_ms = CASE
+          WHEN tool_spans.started_at IS NOT NULL AND excluded.finished_at IS NOT NULL
+            THEN GREATEST(0, (EXTRACT(EPOCH FROM (excluded.finished_at - tool_spans.started_at)) * 1000)::int)
+          ELSE tool_spans.duration_ms
+        END,
+        updated_at = NOW()
+    `,
+    [
+      input.sessionId,
+      input.sessionKey,
+      input.toolCallId,
+      input.eventIdResult,
+      input.toolName,
+      JSON.stringify(input.resultJson),
+      input.isError,
+      input.finishedAt
+    ]
+  );
+};

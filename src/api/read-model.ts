@@ -15,7 +15,8 @@ import {
   type MemoryDto,
   type OpenclawStatus,
   type OverviewDto,
-  type SessionDto
+  type SessionDto,
+  type StreamDto
 } from './contracts.js';
 
 const nowIso = (): string => new Date().toISOString();
@@ -350,6 +351,66 @@ export const readCron = async (db: DbExecutor): Promise<CronDto> => {
       endedAt: row.ended_at,
       summary: row.summary,
       updatedAt: row.updated_at
+    }))
+  };
+};
+
+export const readStream = async (db: DbExecutor): Promise<StreamDto> => {
+  const messagesResult = await db.query<{
+    session_key: string | null;
+    role: string;
+    message_ts: string;
+    text_preview: string | null;
+    model: string | null;
+  }>(`
+      SELECT session_key, role, message_ts, text_preview, model
+      FROM session_messages
+      ORDER BY message_ts DESC
+      LIMIT 100
+    `);
+
+  const toolsResult = await db.query<{
+    session_key: string | null;
+    tool_call_id: string;
+    tool_name: string | null;
+    is_error: boolean;
+    started_at: string | null;
+    finished_at: string | null;
+    duration_ms: number | null;
+  }>(`
+      SELECT session_key, tool_call_id, tool_name, is_error, started_at, finished_at, duration_ms
+      FROM tool_spans
+      ORDER BY COALESCE(finished_at, started_at, updated_at) DESC
+      LIMIT 100
+    `);
+
+  const rateResult = await db.query<{ events_per_minute: string }>(`
+      SELECT COUNT(*)::text AS events_per_minute
+      FROM session_events
+      WHERE event_ts >= NOW() - INTERVAL '1 minute'
+    `);
+
+  return {
+    ok: true,
+    apiVersion: API_VERSION,
+    generatedAt: nowIso(),
+    readOnly: true,
+    eventsPerMinute: Number(rateResult.rows[0]?.events_per_minute ?? 0),
+    messages: messagesResult.rows.map((row) => ({
+      sessionKey: row.session_key,
+      role: row.role,
+      messageTs: row.message_ts,
+      textPreview: row.text_preview,
+      model: row.model
+    })),
+    tools: toolsResult.rows.map((row) => ({
+      sessionKey: row.session_key,
+      toolCallId: row.tool_call_id,
+      toolName: row.tool_name,
+      isError: row.is_error,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      durationMs: row.duration_ms
     }))
   };
 };

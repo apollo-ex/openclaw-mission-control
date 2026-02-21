@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { DbExecutor } from './db/types.js';
-import { getContractResponse, readAgents, readCron, readHealth, readMemory, readOverview } from './api/read-model.js';
+import { getContractResponse, readAgents, readCron, readHealth, readMemory, readOverview, readStream } from './api/read-model.js';
 import { withErrorBoundary, HttpError } from './lib/errors.js';
 import { sendJson } from './lib/http.js';
 import type { Logger } from './lib/logger.js';
@@ -95,6 +95,11 @@ const routeRequest =
 
     if (method === 'GET' && pathname === '/api/health') {
       sendJson(res, 200, await readHealth(db));
+      return;
+    }
+
+    if (method === 'GET' && pathname === '/api/stream') {
+      sendJson(res, 200, await readStream(db));
       return;
     }
 

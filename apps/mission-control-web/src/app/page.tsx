@@ -1,6 +1,6 @@
 import { AutoRefresh } from '@/components/auto-refresh';
 import { RuntimeLane } from '@/components/runtime-lane';
-import { getAgents, getCron, getHealth, getMemory, getOverview } from '@/lib/api';
+import { getAgents, getCron, getHealth, getMemory, getOverview, getStream } from '@/lib/api';
 import type { CronRunRecord } from '@/lib/contracts';
 
 export const dynamic = 'force-dynamic';
@@ -46,12 +46,13 @@ const eventToneForRun = (run: CronRunRecord): Tone => {
 };
 
 export default async function MissionControlPage() {
-  const [overview, agentsPayload, cronPayload, healthPayload, memoryPayload] = await Promise.all([
+  const [overview, agentsPayload, cronPayload, healthPayload, memoryPayload, streamPayload] = await Promise.all([
     getOverview(),
     getAgents(),
     getCron(),
     getHealth(),
-    getMemory()
+    getMemory(),
+    getStream()
   ]);
 
   const sessions = agentsPayload.sessions;
@@ -309,6 +310,50 @@ export default async function MissionControlPage() {
               </li>
             )}
           </ul>
+        </article>
+
+        <article className="panel panel-stream" id="stream">
+          <header className="panel-head compact">
+            <div>
+              <p className="eyebrow">Realtime Stream</p>
+              <h2>Messages + Tool Calls</h2>
+            </div>
+            <span className="tone-chip tone-running">{streamPayload.eventsPerMinute}/min</span>
+          </header>
+
+          <div className="stream-grid">
+            <div>
+              <h3>Latest messages</h3>
+              <ul className="event-list compact-list">
+                {streamPayload.messages.slice(0, 8).map((msg, index) => (
+                  <li key={`${msg.sessionKey ?? 'unknown'}-${msg.messageTs}-${index}`}>
+                    <span className={`event-dot ${msg.role === 'user' ? 'tone-neutral' : msg.role === 'assistant' ? 'tone-running' : 'tone-healthy'}`} />
+                    <div>
+                      <strong>{msg.role}</strong>
+                      <p>{msg.textPreview ?? 'no text payload'}</p>
+                      <small>{msg.sessionKey ?? 'unmapped session'} · {formatDateTime(msg.messageTs)}</small>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3>Latest tool spans</h3>
+              <ul className="event-list compact-list">
+                {streamPayload.tools.slice(0, 8).map((tool) => (
+                  <li key={tool.toolCallId}>
+                    <span className={`event-dot ${tool.isError ? 'tone-error' : 'tone-healthy'}`} />
+                    <div>
+                      <strong>{tool.toolName ?? 'unknown-tool'}</strong>
+                      <p>{tool.durationMs !== null ? `${tool.durationMs}ms` : 'duration pending'} · {tool.toolCallId.slice(0, 22)}</p>
+                      <small>{tool.sessionKey ?? 'unmapped session'} · {formatDateTime(tool.startedAt ?? tool.finishedAt)}</small>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </article>
 
         <article className="panel panel-memory" id="memory">

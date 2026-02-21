@@ -7,7 +7,16 @@ import { Pool } from 'pg';
 import { createTestDatabase } from './test-utils.js';
 import { applyMigrations } from './migrations.js';
 import { seedDatabase } from './seed.js';
-import { appendEvent, upsertSessions, upsertSourceSnapshot } from './upserts.js';
+import {
+  appendEvent,
+  insertSessionEvent,
+  upsertSessionMessage,
+  upsertSessionStreamOffset,
+  upsertSessions,
+  upsertSourceSnapshot,
+  upsertToolCall,
+  upsertToolResult
+} from './upserts.js';
 
 test('migrations apply and re-run safely', async () => {
   const { db, close } = await createTestDatabase();
@@ -179,6 +188,91 @@ test('appendEvent deduplicates by idempotency key', async () => {
 
     const countResult = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM events');
     assert.equal(Number(countResult.rows[0]?.count ?? 0), 1);
+  } finally {
+    await close();
+  }
+});
+
+test('session stream tables accept event/message/tool span upserts idempotently', async () => {
+  const { db, close } = await createTestDatabase();
+
+  try {
+    const sessionId = 'sid-stream-1';
+    const sessionKey = 'session:stream:test';
+
+    await upsertSessionStreamOffset(db, {
+      sessionId,
+      sessionKey,
+      transcriptPath: '/tmp/sid-stream-1.jsonl',
+      lastByteOffset: 100,
+      lastLineNumber: 3
+    });
+
+    await insertSessionEvent(db, {
+      sessionId,
+      sessionKey,
+      eventId: 'evt-1',
+      parentEventId: null,
+      eventType: 'message',
+      eventTs: '2026-01-01T00:00:00.000Z',
+      sourceLine: 1,
+      rawJson: { hello: 'world' }
+    });
+
+    await insertSessionEvent(db, {
+      sessionId,
+      sessionKey,
+      eventId: 'evt-1',
+      parentEventId: null,
+      eventType: 'message',
+      eventTs: '2026-01-01T00:00:00.000Z',
+      sourceLine: 1,
+      rawJson: { hello: 'world' }
+    });
+
+    await upsertSessionMessage(db, {
+      sessionId,
+      sessionKey,
+      eventId: 'evt-1',
+      role: 'assistant',
+      messageTs: '2026-01-01T00:00:00.000Z',
+      textPreview: 'preview',
+      provider: 'openai',
+      model: 'gpt-5',
+      stopReason: null,
+      usageInput: 1,
+      usageOutput: 2,
+      usageTotal: 3
+    });
+
+    await upsertToolCall(db, {
+      sessionId,
+      sessionKey,
+      toolCallId: 'call-1',
+      eventIdCall: 'evt-1',
+      toolName: 'read',
+      argumentsJson: { path: 'x' },
+      startedAt: '2026-01-01T00:00:01.000Z'
+    });
+
+    await upsertToolResult(db, {
+      sessionId,
+      sessionKey,
+      toolCallId: 'call-1',
+      eventIdResult: 'evt-2',
+      toolName: 'read',
+      resultJson: { ok: true },
+      isError: false,
+      finishedAt: '2026-01-01T00:00:02.000Z'
+    });
+
+    const eventsCount = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM session_events');
+    const messagesCount = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM session_messages');
+    const toolsCount = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM tool_spans');
+
+    assert.equal(Number(eventsCount.rows[0]?.count ?? 0), 1);
+    assert.equal(Number(messagesCount.rows[0]?.count ?? 0), 1);
+    assert.equal(Number(toolsCount.rows[0]?.count ?? 0), 1);
   } finally {
     await close();
   }

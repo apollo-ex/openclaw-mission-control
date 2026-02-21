@@ -1,6 +1,6 @@
-import type { AgentsResponse, CronResponse, HealthResponse, MemoryResponse, OverviewResponse } from './contracts';
+import type { AgentsResponse, CronResponse, HealthResponse, MemoryResponse, OverviewResponse, StreamResponse } from './contracts';
 import { getQueryExecutor, warnIfLegacyBridgeEnvConfigured } from './db';
-import { readAgents, readCron, readHealth, readMemory, readOverview, type QueryExecutor } from './read-model';
+import { readAgents, readCron, readHealth, readMemory, readOverview, readStream, type QueryExecutor } from './read-model';
 
 const fallbackEnvelope = () => ({
   ok: true as const,
@@ -59,6 +59,12 @@ export const createMissionControlApi = (db: QueryExecutor) => ({
     withFallback(
       () => readHealth(db),
       () => ({ ...fallbackEnvelope(), latest: null, collectors: [] })
+    ),
+
+  getStream: (): Promise<StreamResponse> =>
+    withFallback(
+      () => readStream(db),
+      () => ({ ...fallbackEnvelope(), eventsPerMinute: 0, messages: [], tools: [] })
     )
 });
 
@@ -72,3 +78,4 @@ export const getAgents = (): Promise<AgentsResponse> => defaultApi().getAgents()
 export const getMemory = (): Promise<MemoryResponse> => defaultApi().getMemory();
 export const getCron = (): Promise<CronResponse> => defaultApi().getCron();
 export const getHealth = (): Promise<HealthResponse> => defaultApi().getHealth();
+export const getStream = (): Promise<StreamResponse> => defaultApi().getStream();

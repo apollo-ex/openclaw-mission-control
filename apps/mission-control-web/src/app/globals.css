@@ -188,7 +188,8 @@ body::before {
 
 .panel-cron,
 .panel-health,
-.panel-memory {
+.panel-memory,
+.panel-stream {
   grid-column: span 4;
 }
 
@@ -465,10 +466,15 @@ body::before {
   font-size: 12px;
 }
 
+.stream-grid,
 .memory-grid {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compact-list li {
+  padding: 7px;
 }
 
 .memory-grid h3 {
@@ -500,7 +506,8 @@ body::before {
   .panel-agents,
   .panel-cron,
   .panel-health,
-  .panel-memory {
+  .panel-memory,
+  .panel-stream {
     grid-column: span 6;
   }
 
@@ -528,7 +535,8 @@ body::before {
   .panel-agents,
   .panel-cron,
   .panel-health,
-  .panel-memory {
+  .panel-memory,
+  .panel-stream {
     grid-column: span 1;
   }
 
@@ -541,6 +549,7 @@ body::before {
     flex-direction: column;
   }
 
+  .stream-grid,
   .memory-grid {
     grid-template-columns: 1fr;
   }

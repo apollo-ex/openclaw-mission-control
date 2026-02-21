@@ -2,6 +2,7 @@ import { CronAdapter, MemoryAdapter, SessionsAdapter, StatusAdapter } from '../a
 import type { AppConfig } from '../lib/config.js';
 import { CadenceProfile } from './cadence.js';
 import { ingestCronSnapshot, ingestMemorySnapshot, ingestSessionsSnapshot, ingestStatusSnapshot } from './ingest.js';
+import { ingestSessionStream } from './session-stream.js';
 import type { CollectorTask } from './types.js';
 
 export const buildCollectors = (config: AppConfig): CollectorTask[] => {
@@ -44,6 +45,13 @@ export const buildCollectors = (config: AppConfig): CollectorTask[] => {
       run: async ({ db }) => {
         const snapshot = await memoryAdapter.collect();
         await ingestMemorySnapshot(db, snapshot);
+      }
+    },
+    {
+      name: 'session_stream_hot',
+      cadence: CadenceProfile.hot(config.hotIntervalMs),
+      run: async ({ db }) => {
+        await ingestSessionStream(db);
       }
     }
   ];

@@ -107,3 +107,27 @@ export interface HealthResponse extends ApiEnvelope {
   latest: HealthSample | null;
   collectors: CollectorStateRecord[];
 }
+
+export interface StreamMessageRecord {
+  sessionKey: string | null;
+  role: string;
+  messageTs: string;
+  textPreview: string | null;
+  model: string | null;
+}
+
+export interface ToolSpanRecord {
+  sessionKey: string | null;
+  toolCallId: string;
+  toolName: string | null;
+  isError: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+}
+
+export interface StreamResponse extends ApiEnvelope {
+  eventsPerMinute: number;
+  messages: StreamMessageRecord[];
+  tools: ToolSpanRecord[];
+}

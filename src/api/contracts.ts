@@ -6,7 +6,8 @@ export const API_ENDPOINTS = {
   agents: '/api/agents',
   memory: '/api/memory',
   cron: '/api/cron',
-  health: '/api/health'
+  health: '/api/health',
+  stream: '/api/stream'
 } as const;
 
 export type OpenclawStatus = 'ok' | 'degraded' | 'offline' | 'unknown';
@@ -140,4 +141,32 @@ export interface HealthDto {
   readOnly: true;
   latest: HealthSampleDto | null;
   collectors: CollectorStateDto[];
+}
+
+export interface StreamMessageDto {
+  sessionKey: string | null;
+  role: string;
+  messageTs: string;
+  textPreview: string | null;
+  model: string | null;
+}
+
+export interface StreamToolDto {
+  sessionKey: string | null;
+  toolCallId: string;
+  toolName: string | null;
+  isError: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+}
+
+export interface StreamDto {
+  ok: true;
+  apiVersion: typeof API_VERSION;
+  generatedAt: string;
+  readOnly: true;
+  eventsPerMinute: number;
+  messages: StreamMessageDto[];
+  tools: StreamToolDto[];
 }

@@ -21,11 +21,13 @@ test('buildCollectors wires expected task names and cadence intervals', () => {
 
   assert.deepEqual(
     tasks.map((task) => task.name),
-    ['sessions_hot', 'cron_hot', 'health_hot', 'memory_warm']
+    ['sessions_hot', 'cron_hot', 'health_hot', 'memory_warm', 'session_stream_hot']
   );
 
   assert.equal(tasks[0]?.cadence.kind, 'hot');
   assert.equal(tasks[0]?.cadence.intervalMs, 5000);
   assert.equal(tasks[3]?.cadence.kind, 'warm');
   assert.equal(tasks[3]?.cadence.intervalMs, 25000);
+  assert.equal(tasks[4]?.cadence.kind, 'hot');
+  assert.equal(tasks[4]?.cadence.intervalMs, 5000);
 });
