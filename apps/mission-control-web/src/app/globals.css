@@ -503,6 +503,31 @@ body::before {
   border: 0;
   height: 100vh;
   min-height: 100vh;
+  position: relative;
+}
+
+.freshness-badge {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 9;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #2a3d63;
+  background: #071126cc;
+  color: #c5d7fb;
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', 'Menlo', monospace;
+}
+
+.freshness-badge.is-fresh {
+  border-color: #2f6a52;
+  color: #9fe9cd;
+}
+
+.freshness-badge.is-stale {
+  border-color: #7e5e2f;
+  color: #ffd486;
 }
 
 .graph-wrap {
@@ -607,6 +632,7 @@ body::before {
 .flow-error { border-color: #ff6f91; }
 .flow-inactive { border-color: #5d6f93; opacity: 0.86; }
 .flow-neutral { border-color: #6d85b0; }
+.flow-kind-channel { border-color: #b58cff; background: #211237; }
 
 .stream-grid,
 .memory-grid {

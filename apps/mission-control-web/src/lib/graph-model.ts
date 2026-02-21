@@ -1,7 +1,7 @@
 import type { AgentsResponse, CronResponse, HealthResponse, StreamResponse } from './contracts';
 import { layoutWithDagre } from './layout-dagre';
 
-export type TopologyNodeKind = 'agent' | 'session' | 'cron' | 'health';
+export type TopologyNodeKind = 'channel' | 'agent' | 'session' | 'cron' | 'health';
 
 export interface TopologyNodeData {
   [key: string]: unknown;
@@ -35,6 +35,16 @@ const statusFromHealth = (s: string | undefined): TopologyNodeData['status'] => 
 
 const clip = (v: string, n = 42): string => (v.length > n ? `${v.slice(0, n)}…` : v);
 
+const channelFromSessionKey = (sessionKey: string): string => {
+  if (sessionKey.includes(':telegram:')) return 'telegram';
+  if (sessionKey.includes(':whatsapp:')) return 'whatsapp';
+  if (sessionKey.includes(':signal:')) return 'signal';
+  if (sessionKey.includes(':discord:')) return 'discord';
+  if (sessionKey.includes(':slack:')) return 'slack';
+  if (sessionKey.includes(':cron:')) return 'cron';
+  return 'other';
+};
+
 export const buildTopologyGraph = (
   agentsPayload: AgentsResponse,
   cronPayload: CronResponse,
@@ -65,11 +75,41 @@ export const buildTopologyGraph = (
   }
 
   const activeByAgent = new Map<string, typeof activeSessions>();
+  const activeByChannel = new Map<string, typeof activeSessions>();
+
   for (const session of activeSessions) {
-    const k = session.agentId ?? 'unassigned-agent';
-    const arr = activeByAgent.get(k) ?? [];
-    arr.push(session);
-    activeByAgent.set(k, arr);
+    const agentKey = session.agentId ?? 'unassigned-agent';
+    const byAgent = activeByAgent.get(agentKey) ?? [];
+    byAgent.push(session);
+    activeByAgent.set(agentKey, byAgent);
+
+    const channelKey = channelFromSessionKey(session.sessionKey);
+    const byChannel = activeByChannel.get(channelKey) ?? [];
+    byChannel.push(session);
+    activeByChannel.set(channelKey, byChannel);
+  }
+
+  const orderedChannels = ['telegram', 'whatsapp', 'signal', 'discord', 'slack', 'cron', 'other'];
+  for (const channel of orderedChannels) {
+    const sessions = activeByChannel.get(channel) ?? [];
+    if (sessions.length === 0) continue;
+
+    const channelActivity = sessions
+      .flatMap((s) => [...(messagesBySession.get(s.sessionKey) ?? []), ...(toolsBySession.get(s.sessionKey) ?? [])])
+      .slice(0, 2);
+
+    nodes.push({
+      id: `channel:${channel}`,
+      position: { x: 0, y: 0 },
+      data: {
+        kind: 'channel',
+        title: channel,
+        subtitle: 'connected channel',
+        status: 'active',
+        output: `${sessions.length} active sessions`,
+        activity: channelActivity.length > 0 ? channelActivity : ['traffic active']
+      }
+    });
   }
 
   for (const agent of agentsPayload.agents.slice(0, 12)) {
@@ -110,12 +150,24 @@ export const buildTopologyGraph = (
       }
     });
 
+    const agentNodeId = `agent:${session.agentId ?? 'unassigned-agent'}`;
+    const channelNodeId = `channel:${channelFromSessionKey(session.sessionKey)}`;
+
     edges.push({
-      id: `edge:agent:${session.agentId ?? 'unassigned-agent'}->session:${session.sessionKey}`,
-      source: `agent:${session.agentId ?? 'unassigned-agent'}`,
+      id: `edge:${agentNodeId}->session:${session.sessionKey}`,
+      source: agentNodeId,
       target: `session:${session.sessionKey}`,
       data: { relation: 'produces', status: 'healthy' }
     });
+
+    if (!edges.some((edge) => edge.source === channelNodeId && edge.target === agentNodeId)) {
+      edges.push({
+        id: `edge:${channelNodeId}->${agentNodeId}`,
+        source: channelNodeId,
+        target: agentNodeId,
+        data: { relation: 'routes', status: 'neutral' }
+      });
+    }
   }
 
   const latestRunByJobId = new Map<string, string>();

@@ -28,12 +28,12 @@ const markerEnd: EdgeMarker = {
   color: '#7da0d8'
 };
 
-const nodeClass = (status: TopologyNodeData['status']): string => `flow-node flow-${status}`;
+const nodeClass = (node: TopologyNodeData): string => `flow-node flow-${node.status} flow-kind-${node.kind}`;
 
 const nodeTypes = {
   topology: memo(({ data }: NodeProps<Node<TopologyNodeData>>) => {
     return (
-      <div className={nodeClass(data.status)}>
+      <div className={nodeClass(data)}>
         <Handle type="target" position={Position.Left} isConnectable={false} />
         <p>{data.kind.toUpperCase()}</p>
         <strong>{data.title}</strong>
@@ -53,7 +53,9 @@ const nodeTypes = {
 nodeTypes.topology.displayName = 'TopologyNode';
 
 const nodeColor = (node: Node): string => {
-  const status = (node.data as TopologyNodeData | undefined)?.status;
+  const data = node.data as TopologyNodeData | undefined;
+  const status = data?.status;
+  if (data?.kind === 'channel') return '#c9a7ff';
   if (status === 'error') return '#ff6f91';
   if (status === 'degraded') return '#ffcd6e';
   if (status === 'active') return '#6ec4ff';

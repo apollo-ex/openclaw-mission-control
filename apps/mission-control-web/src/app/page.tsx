@@ -16,7 +16,7 @@ export default async function MissionControlPage() {
 
   return (
     <main className="mission-surface canvas-only">
-      <TopologyPanel graph={graph} />
+      <TopologyPanel graph={graph} generatedAt={streamPayload.generatedAt} />
     </main>
   );
 }
