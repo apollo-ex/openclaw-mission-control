@@ -11,12 +11,19 @@ import { logger } from './lib/logger.js';
 const main = async (): Promise<void> => {
   const config = loadConfig();
   const db = openDatabase(config.databaseUrl);
+  const migrationDb = config.databaseUrlDirect === config.databaseUrl ? db : openDatabase(config.databaseUrlDirect);
 
-  const migrationResult = await applyMigrations(db, path.resolve(process.cwd(), 'migrations'));
-  logger.info('migrations_complete', migrationResult);
+  try {
+    const migrationResult = await applyMigrations(migrationDb, path.resolve(process.cwd(), 'migrations'));
+    logger.info('migrations_complete', migrationResult);
 
-  await seedDatabase(db);
-  logger.info('seed_complete');
+    await seedDatabase(migrationDb);
+    logger.info('seed_complete');
+  } finally {
+    if (migrationDb !== db) {
+      await migrationDb.end();
+    }
+  }
 
   const scheduler = new CollectorScheduler(
     { db, logger },
@@ -36,7 +43,8 @@ const main = async (): Promise<void> => {
     logger.info('mission_control_started', {
       host: config.host,
       port: config.port,
-      databaseUrl: config.databaseUrl.replace(/:[^:@]+@/, ':***@')
+      databaseUrl: config.databaseUrl.replace(/:[^:@]+@/, ':***@'),
+      databaseUrlDirect: config.databaseUrlDirect.replace(/:[^:@]+@/, ':***@')
     });
   });
 

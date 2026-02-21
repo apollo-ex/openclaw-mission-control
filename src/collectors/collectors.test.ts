@@ -6,14 +6,17 @@ test('buildCollectors wires expected task names and cadence intervals', () => {
   const tasks = buildCollectors({
     host: '127.0.0.1',
     port: 4242,
-    databaseUrl: 'postgresql://openclaw_test_user:openclaw_local_dev_pw_2026@localhost:5432/openclaw_test_db',
+    databaseUrl: 'postgresql://openclaw_test_user@localhost:5432/openclaw_test_db',
+    databaseUrlDirect: 'postgresql://openclaw_test_user@localhost:5432/openclaw_test_db',
     apiToken: null,
     workspaceRoot: '/tmp/workspace',
     hotIntervalMs: 5000,
     warmIntervalMs: 25000,
     collectorMaxRetries: 3,
     collectorBackoffBaseMs: 100,
-    collectorBackoffMaxMs: 2000
+    collectorBackoffMaxMs: 2000,
+    sessionActiveWindowMs: 900000,
+    sessionsListLimit: 500
   });
 
   assert.deepEqual(

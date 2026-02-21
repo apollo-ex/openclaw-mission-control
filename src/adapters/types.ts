@@ -27,8 +27,11 @@ export interface MemoryDocRecord {
   content: string;
 }
 
+export type SessionRunType = 'main' | 'subagent' | 'cron' | 'agent' | 'unknown';
+
 export interface SessionRecord {
   sessionKey: string;
+  sessionId: string | null;
   label: string;
   status: 'active' | 'recent' | 'unknown';
   startedAt: string | null;
@@ -36,6 +39,9 @@ export interface SessionRecord {
   runtimeMs: number | null;
   model: string | null;
   agentId: string | null;
+  sessionKind: string | null;
+  runType: SessionRunType;
+  lastUpdateAt: string | null;
 }
 
 export interface CronJobRecord {

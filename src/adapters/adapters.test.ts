@@ -44,51 +44,105 @@ test('MemoryAdapter surfaces warnings for missing docs and unavailable memory fo
   assert.equal(snapshot.warnings.includes('memory_dir_unavailable'), true);
 });
 
-test('SessionsAdapter handles command errors safely', async () => {
-  const adapter = new SessionsAdapter(async () => ({
-    stdout: '',
-    stderr: 'boom',
-    exitCode: 1
-  }));
+test('SessionsAdapter handles gateway + fallback command errors safely', async () => {
+  let calls = 0;
+  const adapter = new SessionsAdapter(
+    async () => {
+      calls += 1;
+      return {
+        stdout: '',
+        stderr: calls === 1 ? 'gateway down' : 'sessions unavailable',
+        exitCode: 1
+      };
+    },
+    { activeWindowMs: 60_000, limit: 50 },
+    ['openclaw', 'gateway', 'call', 'sessions.list', '--json'],
+    ['openclaw', 'sessions', '--json']
+  );
 
   const snapshot = await adapter.collect();
 
   assert.equal(snapshot.data.length, 0);
   assert.equal(snapshot.metadata.readOnly, true);
-  assert.equal(snapshot.warnings[0]?.startsWith('sessions_command_failed:'), true);
+  assert.equal(snapshot.warnings.includes('sessions_gateway_failed:gateway down'), true);
+  assert.equal(snapshot.warnings.includes('sessions_command_failed:sessions unavailable'), true);
 });
 
-test('SessionsAdapter normalizes JSON rows and unknown values', async () => {
-  const adapter = new SessionsAdapter(async () => ({
-    stdout: JSON.stringify([
-      {
-        session_key: 's-legacy',
-        label: 'Legacy',
-        status: 'active',
-        startedAt: '2026-01-01T00:00:00.000Z',
-        runtimeMs: 42,
-        model: 'gpt-5',
-        agentId: 'coder'
-      },
-      {
-        id: 's-2',
-        status: 'weird'
-      },
-      42
-    ]),
-    stderr: '',
-    exitCode: 0
-  }));
+test('SessionsAdapter normalizes gateway sessions payload with run typing + active inference', async () => {
+  const now = Date.now();
+  const adapter = new SessionsAdapter(
+    async () => ({
+      stdout: JSON.stringify({
+        sessions: [
+          {
+            key: 'agent:coder:subagent:abc-123',
+            sessionId: 'sid-sub',
+            label: 'worker',
+            kind: 'direct',
+            updatedAt: now - 5 * 60 * 1000,
+            model: 'gpt-5.3-codex'
+          },
+          {
+            key: 'agent:main:cron:def-456',
+            displayName: 'Cron: digest',
+            kind: 'direct',
+            updatedAt: now - 40 * 60 * 1000
+          }
+        ]
+      }),
+      stderr: '',
+      exitCode: 0
+    }),
+    { activeWindowMs: 10 * 60 * 1000, limit: 200 }
+  );
 
   const snapshot = await adapter.collect();
 
   assert.equal(snapshot.warnings.length, 0);
   assert.equal(snapshot.data.length, 2);
-  assert.equal(snapshot.data[0]?.sessionKey, 's-legacy');
+  assert.equal(snapshot.data[0]?.sessionKey, 'agent:coder:subagent:abc-123');
   assert.equal(snapshot.data[0]?.status, 'active');
-  assert.equal(snapshot.data[1]?.sessionKey, 's-2');
-  assert.equal(snapshot.data[1]?.label, 'unlabeled');
-  assert.equal(snapshot.data[1]?.status, 'unknown');
+  assert.equal(snapshot.data[0]?.runType, 'subagent');
+  assert.equal(snapshot.data[0]?.agentId, 'coder');
+  assert.equal(snapshot.data[1]?.runType, 'cron');
+  assert.equal(snapshot.data[1]?.status, 'recent');
+  assert.equal(snapshot.data[1]?.label, 'Cron: digest');
+});
+
+test('SessionsAdapter falls back to `openclaw sessions --json` payload shape', async () => {
+  let calls = 0;
+  const adapter = new SessionsAdapter(
+    async () => {
+      calls += 1;
+      if (calls === 1) {
+        return { stdout: '', stderr: 'gateway unavailable', exitCode: 1 };
+      }
+
+      return {
+        stdout: JSON.stringify({
+          sessions: [
+            {
+              key: 'agent:main:main',
+              updatedAt: Date.now(),
+              kind: 'direct',
+              model: 'gpt-5.3-codex'
+            }
+          ]
+        }),
+        stderr: '',
+        exitCode: 0
+      };
+    },
+    { activeWindowMs: 30_000, limit: 20 },
+    ['openclaw', 'gateway', 'call', 'sessions.list', '--json'],
+    ['openclaw', 'sessions', '--json']
+  );
+
+  const snapshot = await adapter.collect();
+
+  assert.equal(snapshot.data.length, 1);
+  assert.equal(snapshot.data[0]?.runType, 'main');
+  assert.equal(snapshot.warnings.includes('sessions_gateway_failed:gateway unavailable'), true);
 });
 
 test('SessionsAdapter warns on invalid JSON', async () => {
@@ -101,7 +155,8 @@ test('SessionsAdapter warns on invalid JSON', async () => {
   const snapshot = await adapter.collect();
 
   assert.equal(snapshot.data.length, 0);
-  assert.deepEqual(snapshot.warnings, ['sessions_output_not_json']);
+  assert.equal(snapshot.warnings.includes('sessions_gateway_non_json_output'), true);
+  assert.equal(snapshot.warnings.includes('sessions_output_not_json'), true);
 });
 
 test('CronAdapter parses jobs/runs and handles missing fields', async () => {

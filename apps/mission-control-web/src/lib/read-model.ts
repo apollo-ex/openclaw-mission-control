@@ -1,42 +1,34 @@
-import type { DbExecutor } from '../db/types.js';
-import {
-  API_ENDPOINTS,
-  API_VERSION,
-  type AgentDto,
-  type AgentsDto,
-  type ApiContractResponse,
-  type CollectorStateDto,
-  type CronDto,
-  type CronJobDto,
-  type CronRunDto,
-  type HealthDto,
-  type HealthSampleDto,
-  type MemoryDocDto,
-  type MemoryDto,
-  type OpenclawStatus,
-  type OverviewDto,
-  type SessionDto
-} from './contracts.js';
+import type {
+  AgentsResponse,
+  CronResponse,
+  HealthResponse,
+  MemoryResponse,
+  OverviewResponse,
+  SessionRecord
+} from './contracts';
+
+const API_VERSION = '2026-02-20.v2';
 
 const nowIso = (): string => new Date().toISOString();
 
-export const getContractResponse = (): ApiContractResponse => ({
-  ok: true,
-  apiVersion: API_VERSION,
-  readOnly: true,
-  endpoints: API_ENDPOINTS,
-  notes: [
-    'All API endpoints are GET-only and read from mission-control cache tables in Postgres (Neon-first).',
-    'No OpenClaw mutating operations are performed by this service.'
-  ]
-});
+export interface QueryExecutor {
+  query: <R extends Record<string, unknown> = Record<string, unknown>>(
+    text: string,
+    params?: readonly unknown[]
+  ) => Promise<{ rows: R[] }>;
+}
 
-const readLatestStatus = async (db: DbExecutor): Promise<OpenclawStatus> => {
-  const result = await db.query<{ openclaw_status: OpenclawStatus }>('SELECT openclaw_status FROM health_samples ORDER BY ts DESC LIMIT 1');
+const readLatestStatus = async (
+  db: QueryExecutor
+): Promise<'ok' | 'degraded' | 'offline' | 'unknown'> => {
+  const result = await db.query<{ openclaw_status: 'ok' | 'degraded' | 'offline' | 'unknown' }>(
+    'SELECT openclaw_status FROM health_samples ORDER BY ts DESC LIMIT 1'
+  );
+
   return result.rows[0]?.openclaw_status ?? 'unknown';
 };
 
-export const readOverview = async (db: DbExecutor): Promise<OverviewDto> => {
+export const readOverview = async (db: QueryExecutor): Promise<OverviewResponse> => {
   const readCount = async (table: 'agents' | 'sessions' | 'memory_docs' | 'cron_jobs' | 'cron_runs'): Promise<number> => {
     const result = await db.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM ${table}`);
     return Number(result.rows[0]?.count ?? 0);
@@ -65,35 +57,14 @@ export const readOverview = async (db: DbExecutor): Promise<OverviewDto> => {
   };
 };
 
-const readCollectors = async (db: DbExecutor): Promise<CollectorStateDto[]> => {
-  const result = await db.query<{
-    collector_name: string;
-    last_success_at: string | null;
-    last_error_at: string | null;
-    error_count: number;
-    stale: boolean;
-    last_error: string | null;
-  }>(`
-      SELECT collector_name, last_success_at, last_error_at, error_count, stale, last_error
-      FROM collector_state
-      ORDER BY collector_name ASC
-    `);
-
-  return result.rows.map((row) => ({
-    collectorName: row.collector_name,
-    lastSuccessAt: row.last_success_at,
-    lastErrorAt: row.last_error_at,
-    errorCount: row.error_count,
-    stale: row.stale,
-    lastError: row.last_error
-  }));
-};
-
-const computeElapsedMs = (row: {
-  status: string;
-  started_at: string | null;
-  runtime_ms: number | null;
-}, nowMs: number): number | null => {
+const computeElapsedMs = (
+  row: {
+    status: string;
+    started_at: string | null;
+    runtime_ms: number | null;
+  },
+  nowMs: number
+): number | null => {
   if (row.status === 'active' && row.started_at) {
     const startedAtMs = Date.parse(row.started_at);
     if (Number.isFinite(startedAtMs)) {
@@ -104,7 +75,7 @@ const computeElapsedMs = (row: {
   return row.runtime_ms;
 };
 
-export const readAgents = async (db: DbExecutor): Promise<AgentsDto> => {
+export const readAgents = async (db: QueryExecutor): Promise<AgentsResponse> => {
   const agentsResult = await db.query<{
     agent_id: string;
     role: string | null;
@@ -154,7 +125,7 @@ export const readAgents = async (db: DbExecutor): Promise<AgentsDto> => {
     `);
 
   const nowMs = Date.now();
-  const sessions = sessionsResult.rows.map<SessionDto>((row) => ({
+  const sessions = sessionsResult.rows.map<SessionRecord>((row) => ({
     sessionKey: row.session_key,
     sessionId: row.session_id,
     label: row.label,
@@ -177,7 +148,7 @@ export const readAgents = async (db: DbExecutor): Promise<AgentsDto> => {
     generatedAt: nowIso(),
     readOnly: true,
     activeSessions: sessions.filter((session) => session.status === 'active').length,
-    agents: agentsResult.rows.map<AgentDto>((row) => ({
+    agents: agentsResult.rows.map((row) => ({
       agentId: row.agent_id,
       role: row.role,
       configured: row.configured,
@@ -187,7 +158,7 @@ export const readAgents = async (db: DbExecutor): Promise<AgentsDto> => {
   };
 };
 
-export const readMemory = async (db: DbExecutor): Promise<MemoryDto> => {
+export const readMemory = async (db: QueryExecutor): Promise<MemoryResponse> => {
   const result = await db.query<{
     path: string;
     kind: string;
@@ -207,7 +178,7 @@ export const readMemory = async (db: DbExecutor): Promise<MemoryDto> => {
     generatedAt: nowIso(),
     readOnly: true,
     redactedDocs: result.rows.filter((doc) => doc.redacted).length,
-    docs: result.rows.map<MemoryDocDto>((row) => ({
+    docs: result.rows.map((row) => ({
       path: row.path,
       kind: row.kind,
       updatedAt: row.updated_at,
@@ -271,7 +242,7 @@ const cronDetailsMarkdown = (raw: Record<string, unknown> | null): string => {
 
 const normalizeJobId = (job: Record<string, unknown>): string => String(job.jobId ?? job.job_id ?? job.id ?? 'unknown');
 
-const readLatestCronRawJobs = async (db: DbExecutor): Promise<Map<string, Record<string, unknown>>> => {
+const readLatestCronRawJobs = async (db: QueryExecutor): Promise<Map<string, Record<string, unknown>>> => {
   const result = await db.query<{ payload_json: { jobs?: unknown } | null }>(`
       SELECT payload_json
       FROM source_snapshots
@@ -297,7 +268,7 @@ const readLatestCronRawJobs = async (db: DbExecutor): Promise<Map<string, Record
   return map;
 };
 
-export const readCron = async (db: DbExecutor): Promise<CronDto> => {
+export const readCron = async (db: QueryExecutor): Promise<CronResponse> => {
   const jobsResult = await db.query<{
     job_id: string;
     name: string;
@@ -333,7 +304,7 @@ export const readCron = async (db: DbExecutor): Promise<CronDto> => {
     apiVersion: API_VERSION,
     generatedAt: nowIso(),
     readOnly: true,
-    jobs: jobsResult.rows.map<CronJobDto>((row) => ({
+    jobs: jobsResult.rows.map((row) => ({
       jobId: row.job_id,
       name: row.name,
       scheduleKind: row.schedule_kind,
@@ -342,7 +313,7 @@ export const readCron = async (db: DbExecutor): Promise<CronDto> => {
       updatedAt: row.updated_at,
       detailsMarkdown: cronDetailsMarkdown(rawByJobId.get(row.job_id) ?? null)
     })),
-    runs: runsResult.rows.map<CronRunDto>((row) => ({
+    runs: runsResult.rows.map((row) => ({
       runId: row.run_id,
       jobId: row.job_id,
       status: row.status,
@@ -354,12 +325,12 @@ export const readCron = async (db: DbExecutor): Promise<CronDto> => {
   };
 };
 
-export const readHealth = async (db: DbExecutor): Promise<HealthDto> => {
+export const readHealth = async (db: QueryExecutor): Promise<HealthResponse> => {
   const latestResult = await db.query<{
     ts: string;
-    openclaw_status: OpenclawStatus;
+    openclaw_status: 'ok' | 'degraded' | 'offline' | 'unknown';
     stale: boolean;
-    errors_json: string[] | null;
+    errors_json: unknown;
   }>(`
       SELECT ts, openclaw_status, stale, errors_json
       FROM health_samples
@@ -367,23 +338,41 @@ export const readHealth = async (db: DbExecutor): Promise<HealthDto> => {
       LIMIT 1
     `);
 
-  const latest = latestResult.rows[0];
+  const collectorsResult = await db.query<{
+    collector_name: string;
+    last_success_at: string | null;
+    last_error_at: string | null;
+    error_count: number;
+    stale: boolean;
+    last_error: string | null;
+  }>(`
+      SELECT collector_name, last_success_at, last_error_at, error_count, stale, last_error
+      FROM collector_state
+      ORDER BY collector_name ASC
+    `);
 
-  const latestDto: HealthSampleDto | null = latest
-    ? {
-        ts: latest.ts,
-        openclawStatus: latest.openclaw_status,
-        stale: latest.stale,
-        errors: Array.isArray(latest.errors_json) ? latest.errors_json : []
-      }
-    : null;
+  const latest = latestResult.rows[0];
 
   return {
     ok: true,
     apiVersion: API_VERSION,
     generatedAt: nowIso(),
     readOnly: true,
-    latest: latestDto,
-    collectors: await readCollectors(db)
+    latest: latest
+      ? {
+          ts: latest.ts,
+          openclawStatus: latest.openclaw_status,
+          stale: latest.stale,
+          errors: Array.isArray(latest.errors_json) ? latest.errors_json.filter((value): value is string => typeof value === 'string') : []
+        }
+      : null,
+    collectors: collectorsResult.rows.map((row) => ({
+      collectorName: row.collector_name,
+      lastSuccessAt: row.last_success_at,
+      lastErrorAt: row.last_error_at,
+      errorCount: row.error_count,
+      stale: row.stale,
+      lastError: row.last_error
+    }))
   };
 };

@@ -5,7 +5,7 @@ import { loadConfig } from '../lib/config.js';
 
 const main = async (): Promise<void> => {
   const config = loadConfig();
-  const db = openDatabase(config.databaseUrl);
+  const db = openDatabase(config.databaseUrlDirect);
 
   try {
     const result = await applyMigrations(db, path.resolve(process.cwd(), 'migrations'));

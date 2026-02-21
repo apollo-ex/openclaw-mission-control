@@ -3,7 +3,7 @@ import path from 'node:path';
 import { Pool } from 'pg';
 import { applyMigrations } from './migrations.js';
 
-const DEFAULT_TEST_DATABASE_URL = 'postgresql://openclaw_test_user:openclaw_local_dev_pw_2026@localhost:5432/openclaw_test_db';
+const DEFAULT_TEST_DATABASE_URL = 'postgresql://openclaw_test_user@localhost:5432/openclaw_test_db';
 
 const buildSchemaName = (): string => `mc_test_${crypto.randomUUID().replace(/-/g, '')}`;
 

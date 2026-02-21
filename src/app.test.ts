@@ -14,11 +14,27 @@ const makeDatabase = async () => {
 
   await db.query(
     `
-      INSERT INTO sessions (session_key, label, status, started_at, ended_at, runtime_ms, model, agent_id, source_snapshot_id, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, $9)
+      INSERT INTO sessions (
+        session_key,
+        session_id,
+        label,
+        status,
+        started_at,
+        ended_at,
+        runtime_ms,
+        model,
+        agent_id,
+        session_kind,
+        run_type,
+        last_update_at,
+        source_snapshot_id,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL, $13)
     `,
     [
       'session-1',
+      'sid-1',
       'Mission Control Scheduler',
       'active',
       '2026-02-19T10:00:00.000Z',
@@ -26,6 +42,9 @@ const makeDatabase = async () => {
       15000,
       'gpt-5.3-codex',
       'local-observer',
+      'direct',
+      'subagent',
+      '2026-02-19T10:00:01.000Z',
       '2026-02-19T10:00:01.000Z'
     ]
   );
@@ -118,8 +137,12 @@ test('app server serves read-only API routes', async (t) => {
   assert.equal(agentsResponse.status, 200);
   const agentsBody = await agentsResponse.json();
   assert.equal(agentsBody.agents.length >= 1, true);
+  assert.equal(agentsBody.activeSessions, 1);
   assert.equal(agentsBody.sessions.length, 1);
   assert.equal(agentsBody.sessions[0].sessionKey, 'session-1');
+  assert.equal(agentsBody.sessions[0].runType, 'subagent');
+  assert.equal(typeof agentsBody.sessions[0].elapsedMs, 'number');
+  assert.equal(agentsBody.sessions[0].lastUpdateAt, '2026-02-19T10:00:01.000Z');
 
   const memoryResponse = await fetch(`${baseUrl}/api/memory`);
   assert.equal(memoryResponse.status, 200);

@@ -18,7 +18,7 @@ Release is considered done only when all are true:
 |---|---|---|---|---|
 | P0 | MC-001 | Bootstrap service, `/health`, config, error boundaries | DONE | Implemented in `src/index.ts`, `src/app.ts`, `src/lib/*` |
 | P0 | MC-002 | Read-only adapters for sessions/cron/status/memory | DONE | No write methods exposed in adapter interface |
-| P0 | MC-003 | SQLite schema, migrations, seed, idempotent upserts | DONE | Migration + idempotency tests in `src/db/db.test.ts` |
+| P0 | MC-003 | Postgres schema, migrations, seed, idempotent upserts | DONE | Migration + idempotency tests in `src/db/db.test.ts` |
 | P0 | MC-004 | Collector scheduler with retry/backoff + stale handling | DONE | Retry + stale + overlap behavior tested |
 | P1 | MC-005 | Redaction pipeline at ingest boundary | DONE | Memory/status payload redaction + warning redaction tested |
 | P1 | MC-006 | Robust test suite (unit/integration/smoke) | DONE | Adapter + ingest + DB + scheduler + app + lib tests |
@@ -36,7 +36,7 @@ Release is considered done only when all are true:
 | P0 | MC-013 | Expose read-only API contracts for UI consumption | DONE | Added GET-only contracts + `/api/{contracts,overview,agents,memory,cron,health}` |
 | P1 | MC-014 | Wire dashboard pages (Overview/Agents/Memory/Cron/Health) | DONE | Next.js pages wired to read-only backend API client |
 | P1 | MC-015 | Add hybrid deploy mode doc (local backend + Vercel frontend) | DONE | Added `HYBRID_DEPLOYMENT.md` and release/readme updates |
-| P1 | MC-016 | Vercel deploy + verification | BLOCKED | Deploy succeeded (`mission-control-web-rho.vercel.app`) but returns 500 until `MISSION_CONTROL_API_BASE_URL` targets reachable backend (current fallback `127.0.0.1:4242` unreachable on Vercel) |
+| P1 | MC-016 | Vercel deploy + verification | IN_PROGRESS | Frontend deploy succeeds (`mission-control-web-rho.vercel.app`) and is healthy; backend root deploy still fails on Vercel output-directory expectation, so full live data requires a reachable backend API URL plus Neon env wiring |
 
 ## Exit Checklist
 

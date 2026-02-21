@@ -28,17 +28,23 @@ export interface AgentRecord {
 
 export interface SessionRecord {
   sessionKey: string;
+  sessionId: string | null;
   label: string;
   status: string;
   startedAt: string | null;
   endedAt: string | null;
   runtimeMs: number | null;
+  elapsedMs: number | null;
   model: string | null;
   agentId: string | null;
+  sessionKind: string | null;
+  runType: 'main' | 'subagent' | 'cron' | 'agent' | 'unknown';
+  lastUpdateAt: string | null;
   updatedAt: string;
 }
 
 export interface AgentsResponse extends ApiEnvelope {
+  activeSessions: number;
   agents: AgentRecord[];
   sessions: SessionRecord[];
 }

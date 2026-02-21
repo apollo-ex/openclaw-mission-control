@@ -16,3 +16,17 @@
 - Verified locally: `npm run test`, `npm run test:coverage`, `npm run test:ci`, and `curl http://127.0.0.1:4242/health`.
 - Published to GitHub: `https://github.com/apollo-ex/openclaw-mission-control`.
 - Attempted Vercel production deploy; blocked by output-directory mismatch for daemon-style service.
+
+## 2026-02-20
+- Migrated Mission Control DB configuration to Neon-first contract:
+  - Added `DATABASE_URL_DIRECT` support for migration/seed workflows.
+  - Added optional stage-specific URL fallbacks (`DATABASE_URL_DEV|STAGING|PROD`).
+  - Removed hardcoded local DB password from repo defaults.
+- Updated DB client connection handling for Neon SSL-compatible URLs.
+- Updated runtime startup flow to run migrations/seed through direct URL when provided.
+- Updated docs/runbooks (`README`, `HYBRID_DEPLOYMENT`, `RELEASE`, `QUEUE`) for Neon + Vercel env wiring.
+- Redeployed frontend to Vercel; alias remains `https://mission-control-web-rho.vercel.app` and returns HTTP 200.
+- Verified local quality gates:
+  - Backend: `npm run test:ci`
+  - Frontend: `npm run test:ci`
+  - Backend smoke: `/health` and `/api/contracts`

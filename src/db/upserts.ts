@@ -56,10 +56,14 @@ export const upsertSessions = async (db: DbExecutor, rows: SessionRecord[], sour
   const updatedAt = new Date().toISOString();
 
   for (const row of rows) {
+    const startedAt = row.startedAt ?? (row.status === 'active' ? row.lastUpdateAt ?? updatedAt : null);
+    const endedAt = row.status === 'active' ? null : row.endedAt;
+
     await db.query(
       `
         INSERT INTO sessions (
           session_key,
+          session_id,
           label,
           status,
           started_at,
@@ -67,29 +71,49 @@ export const upsertSessions = async (db: DbExecutor, rows: SessionRecord[], sour
           runtime_ms,
           model,
           agent_id,
+          session_kind,
+          run_type,
+          last_update_at,
           source_snapshot_id,
           updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         ON CONFLICT(session_key) DO UPDATE SET
+          session_id = excluded.session_id,
           label = excluded.label,
           status = excluded.status,
-          started_at = excluded.started_at,
-          ended_at = excluded.ended_at,
+          started_at = CASE
+            WHEN excluded.status = 'active' AND sessions.status <> 'active' THEN
+              COALESCE(excluded.started_at, excluded.last_update_at, sessions.started_at)
+            WHEN excluded.status = 'active' THEN
+              COALESCE(sessions.started_at, excluded.started_at, excluded.last_update_at)
+            ELSE COALESCE(excluded.started_at, sessions.started_at)
+          END,
+          ended_at = CASE
+            WHEN excluded.status = 'active' THEN NULL
+            ELSE COALESCE(excluded.ended_at, sessions.ended_at)
+          END,
           runtime_ms = excluded.runtime_ms,
           model = excluded.model,
           agent_id = excluded.agent_id,
+          session_kind = excluded.session_kind,
+          run_type = excluded.run_type,
+          last_update_at = COALESCE(excluded.last_update_at, sessions.last_update_at),
           source_snapshot_id = excluded.source_snapshot_id,
           updated_at = excluded.updated_at
       `,
       [
         row.sessionKey,
+        row.sessionId,
         row.label,
         row.status,
-        row.startedAt,
-        row.endedAt,
+        startedAt,
+        endedAt,
         row.runtimeMs,
         row.model,
         row.agentId,
+        row.sessionKind,
+        row.runType,
+        row.lastUpdateAt,
         sourceSnapshotId,
         updatedAt
       ]

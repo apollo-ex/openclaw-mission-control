@@ -5,7 +5,10 @@ import { ingestCronSnapshot, ingestMemorySnapshot, ingestSessionsSnapshot, inges
 import type { CollectorTask } from './types.js';
 
 export const buildCollectors = (config: AppConfig): CollectorTask[] => {
-  const sessionsAdapter = new SessionsAdapter();
+  const sessionsAdapter = new SessionsAdapter(undefined, {
+    activeWindowMs: config.sessionActiveWindowMs,
+    limit: config.sessionsListLimit
+  });
   const cronAdapter = new CronAdapter();
   const statusAdapter = new StatusAdapter();
   const memoryAdapter = new MemoryAdapter(config.workspaceRoot);

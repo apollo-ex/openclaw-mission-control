@@ -26,17 +26,57 @@
    curl -s http://127.0.0.1:4242/api/contracts
    ```
 
+## Neon + Vercel env setup
+
+Backend Vercel project (`openclaw-mission-control`):
+
+```bash
+cd /Users/apollo/.openclaw/workspace/projects/openclaw-mission-control
+
+# Preview
+vercel env add DATABASE_URL preview
+vercel env add DATABASE_URL_DIRECT preview
+vercel env add SESSION_ACTIVE_WINDOW_MS preview
+vercel env add SESSIONS_LIST_LIMIT preview
+vercel env add MISSION_CONTROL_ENV preview
+
+# Production
+vercel env add DATABASE_URL production
+vercel env add DATABASE_URL_DIRECT production
+vercel env add SESSION_ACTIVE_WINDOW_MS production
+vercel env add SESSIONS_LIST_LIMIT production
+vercel env add MISSION_CONTROL_ENV production
+```
+
+Frontend Vercel project (`mission-control-web`):
+
+```bash
+cd /Users/apollo/.openclaw/workspace/projects/openclaw-mission-control/apps/mission-control-web
+
+# Preview
+vercel env add DATABASE_URL preview
+# Optional legacy token only if you still use protected backend API routes
+vercel env add MISSION_CONTROL_API_TOKEN preview
+
+# Production
+vercel env add DATABASE_URL production
+# Optional legacy token only if you still use protected backend API routes
+vercel env add MISSION_CONTROL_API_TOKEN production
+```
+
+No Cloudflare tunnel is required for normal frontend rendering when `DATABASE_URL` is configured.
+
 ## GitHub release steps
 
 ```bash
 git add .
-git commit -m "feat: add nextjs mission control web dashboard"
+git commit -m "chore: migrate mission control db config to neon standard"
 git push origin main
 ```
 
 If remote does not exist yet:
 ```bash
-gh repo create apollo-ex/openclaw-mission-control --public --source=. --remote=origin --push
+gh repo create apollo-ex/openclaw-mission-control --private --source=. --remote=origin --push
 ```
 
 ## Vercel deployment steps (frontend app)
@@ -47,12 +87,6 @@ Deploy from `apps/mission-control-web`:
 cd apps/mission-control-web
 vercel link --yes
 vercel --prod --yes
-```
-
-Set backend URL for hybrid mode:
-
-```bash
-vercel env add MISSION_CONTROL_API_BASE_URL production
 ```
 
 Verify deployment URL:
@@ -91,9 +125,14 @@ Hybrid mode runbook:
   ```
 - Or promote previous deployment in Vercel dashboard.
 
+### Neon rollback
+- Point `DATABASE_URL` and `DATABASE_URL_DIRECT` back to the previous known-good Postgres endpoint.
+- Re-run `npm run migrate` (idempotent migration tracking in `_migrations`).
+- Validate `/api/health` and `/api/overview` before traffic cutover.
+
 ## Known release risks
 
 - OpenClaw CLI JSON output may drift from parser assumptions.
 - `status` parsing is heuristic string classification.
-- Hybrid mode requires a reachable backend endpoint for Vercel frontend (tunnel/private network).
-- Frontend pages render API failures if `MISSION_CONTROL_API_BASE_URL` is misconfigured.
+- Frontend `DATABASE_URL` misconfiguration causes stale/fallback UI data.
+- Neon credential rotation without Vercel env sync can break frontend/server reads.

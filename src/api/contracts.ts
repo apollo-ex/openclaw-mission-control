@@ -1,4 +1,4 @@
-export const API_VERSION = '2026-02-19.v1' as const;
+export const API_VERSION = '2026-02-20.v2' as const;
 
 export const API_ENDPOINTS = {
   contracts: '/api/contracts',
@@ -55,13 +55,18 @@ export interface AgentDto {
 
 export interface SessionDto {
   sessionKey: string;
+  sessionId: string | null;
   label: string;
   status: string;
   startedAt: string | null;
   endedAt: string | null;
   runtimeMs: number | null;
+  elapsedMs: number | null;
   model: string | null;
   agentId: string | null;
+  sessionKind: string | null;
+  runType: 'main' | 'subagent' | 'cron' | 'agent' | 'unknown';
+  lastUpdateAt: string | null;
   updatedAt: string;
 }
 
@@ -70,6 +75,7 @@ export interface AgentsDto {
   apiVersion: typeof API_VERSION;
   generatedAt: string;
   readOnly: true;
+  activeSessions: number;
   agents: AgentDto[];
   sessions: SessionDto[];
 }

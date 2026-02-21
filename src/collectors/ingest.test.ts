@@ -30,13 +30,17 @@ test('ingestSessionsSnapshot writes sessions and warning event', async () => {
       data: [
         {
           sessionKey: 'session-1',
+          sessionId: 'sid-1',
           label: 'First session',
           status: 'active',
           startedAt: null,
           endedAt: null,
           runtimeMs: 13,
           model: 'gpt-5.3-codex',
-          agentId: 'coder'
+          agentId: 'coder',
+          sessionKind: 'direct',
+          runType: 'subagent',
+          lastUpdateAt: '2026-02-19T10:00:00.000Z'
         }
       ],
       warnings: ['sessions_command_failed:transient']

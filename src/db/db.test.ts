@@ -65,13 +65,17 @@ test('session upsert is idempotent on primary key', async () => {
       [
         {
           sessionKey: 's-1',
+          sessionId: 'sid-1',
           label: 'one',
           status: 'active',
           startedAt: null,
           endedAt: null,
           runtimeMs: null,
           model: null,
-          agentId: null
+          agentId: null,
+          sessionKind: 'direct',
+          runType: 'main',
+          lastUpdateAt: '2026-01-01T00:00:00.000Z'
         }
       ],
       snapshotId
@@ -82,27 +86,53 @@ test('session upsert is idempotent on primary key', async () => {
       [
         {
           sessionKey: 's-1',
+          sessionId: 'sid-1',
           label: 'one-updated',
           status: 'recent',
           startedAt: null,
           endedAt: null,
           runtimeMs: 10,
           model: 'gpt',
-          agentId: 'a'
+          agentId: 'a',
+          sessionKind: 'direct',
+          runType: 'main',
+          lastUpdateAt: '2026-01-01T00:00:02.000Z'
         }
       ],
       snapshotId
     );
 
-    const rowResult = await db.query<{ sessionkey: string; label: string; status: string }>(
-      'SELECT session_key AS sessionKey, label, status FROM sessions WHERE session_key = $1',
+    await upsertSessions(
+      db,
+      [
+        {
+          sessionKey: 's-1',
+          sessionId: 'sid-1',
+          label: 'one-reactivated',
+          status: 'active',
+          startedAt: null,
+          endedAt: null,
+          runtimeMs: null,
+          model: 'gpt',
+          agentId: 'a',
+          sessionKind: 'direct',
+          runType: 'main',
+          lastUpdateAt: '2026-01-01T00:00:03.000Z'
+        }
+      ],
+      snapshotId
+    );
+
+    const rowResult = await db.query<{ sessionkey: string; label: string; status: string; started_at: string | null }>(
+      'SELECT session_key AS sessionKey, label, status, started_at FROM sessions WHERE session_key = $1',
       ['s-1']
     );
 
     const row = rowResult.rows[0];
     assert.equal(row?.sessionkey, 's-1');
-    assert.equal(row?.label, 'one-updated');
-    assert.equal(row?.status, 'recent');
+    assert.equal(row?.label, 'one-reactivated');
+    assert.equal(row?.status, 'active');
+    assert.equal(row?.started_at ? new Date(row.started_at).toISOString() : null, '2026-01-01T00:00:03.000Z');
 
     const countResult = await db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM sessions');
     assert.equal(Number(countResult.rows[0]?.count ?? 0), 1);

@@ -1,17 +1,18 @@
 # OpenClaw Mission Control
 
-Local-first, read-only observability for OpenClaw runtime state.
+Read-only observability for OpenClaw runtime state, with **Neon Postgres** as the primary datastore.
 
 ## Components
 
 - **Backend service (`/`)**
-  - Collects read-only snapshots from OpenClaw surfaces
-  - Persists to local SQLite cache
-  - Exposes read-only HTTP API for dashboards
+  - Collects read-only snapshots from OpenClaw runtime surfaces.
+  - Persists snapshots + read-model tables in Postgres (Neon-first).
+  - Exposes GET-only API for dashboard consumption.
 - **Frontend (`apps/mission-control-web`)**
-  - Next.js + TypeScript dashboard
-  - Vercel-compatible deploy target
-  - Consumes backend read-only API contracts
+  - Next.js + TypeScript dashboard.
+  - Vercel-compatible deploy target.
+  - Reads directly from Neon on the server side (SELECT-only read-model queries).
+  - `MISSION_CONTROL_API_BASE_URL` is deprecated for the primary dashboard flow.
 
 ## Read-only API contracts
 
@@ -23,6 +24,50 @@ Local-first, read-only observability for OpenClaw runtime state.
 - `GET /api/health`
 
 No mutating routes are exposed.
+
+## Backend env contract (Neon)
+
+Required:
+
+- `DATABASE_URL` — **runtime pooled** Neon URL (used by API + collectors).
+- `DATABASE_URL_DIRECT` — **direct/admin** Neon URL (used by migrations + seed).
+
+Recommended:
+
+- `MISSION_CONTROL_API_TOKEN` — protects `/api/*` routes.
+- `SESSION_ACTIVE_WINDOW_MS` — recency window to classify sessions as `active` (default `900000` / 15m).
+- `SESSIONS_LIST_LIMIT` — max sessions to ingest per collector pass (default `500`).
+
+Optional stage fallbacks (used when `DATABASE_URL` is missing):
+
+- `DATABASE_URL_DEV`
+- `DATABASE_URL_STAGING`
+- `DATABASE_URL_PROD`
+- `MISSION_CONTROL_ENV`
+
+See `.env.example` for full variables.
+
+## Frontend env contract (Neon + Vercel)
+
+Required:
+
+- `DATABASE_URL` — pooled Neon URL used by Next.js server-side data reads.
+
+Optional:
+
+- `MISSION_CONTROL_API_TOKEN` — only needed if you still expose protected backend API routes for legacy/auxiliary use.
+
+Deprecated (not used by core pages):
+
+- `MISSION_CONTROL_API_BASE_URL`
+
+No Cloudflare/ngrok tunnel is required for normal frontend operation.
+
+## Neon wiring behavior (important)
+
+- `npm run migrate` and `npm run seed` use `DATABASE_URL_DIRECT`.
+- `npm run dev` / `npm run start` run API + collectors on `DATABASE_URL`.
+- If `DATABASE_URL` is unset, runtime falls back to `DATABASE_URL_DIRECT` before stage-specific values.
 
 ## Run locally
 
@@ -36,12 +81,6 @@ npm run seed
 npm run dev
 ```
 
-Health check:
-
-```bash
-curl -s http://127.0.0.1:4242/health
-```
-
 ### Frontend
 
 ```bash
@@ -52,6 +91,35 @@ npm run dev
 ```
 
 Open: `http://127.0.0.1:3000`
+
+## Verify end-to-end (Neon + web, with optional backend API)
+
+1) **Verify DB connectivity (Neon)**
+
+```bash
+npm run verify:db
+```
+
+2) **Verify frontend reads non-zero data directly from Neon (without `MISSION_CONTROL_API_BASE_URL`)**
+
+```bash
+cd apps/mission-control-web
+cp .env.example .env.local # ensure DATABASE_URL is set
+npm run dev
+```
+
+Open `http://127.0.0.1:3000` and verify dashboard KPIs are populated.
+
+3) **Verify active session observability in UI**
+
+- Open `/agents`.
+- Confirm KPI cards show **Active** and **Subagents Active** counts.
+- In **Live Sessions**, verify rows include:
+  - run type (`main` / `subagent` / `cron` / `agent`)
+  - agent id, session key, label, model
+  - `Last update`
+  - `Elapsed` timer
+- Leave the page open: timer increments every second and page auto-refreshes every 15s.
 
 ## Quality gates
 
@@ -65,11 +133,6 @@ npm run build
 npm run test:ci
 ```
 
-`test:coverage` enforces minimum thresholds:
-- lines: 90%
-- functions: 90%
-- branches: 80%
-
 ### Frontend
 
 ```bash
@@ -80,16 +143,9 @@ npm run build
 npm run test:ci
 ```
 
-## CI
-
-GitHub Actions workflow: `.github/workflows/ci.yml`
-- backend lint/typecheck
-- backend test coverage gate
-- backend build
-
 ## Deployment
 
-Hybrid deployment runbook:
+Neon + Vercel runbook (includes exact Preview + Production env wiring):
 - [`HYBRID_DEPLOYMENT.md`](./HYBRID_DEPLOYMENT.md)
 
 Release + rollback checklist:

@@ -15,6 +15,7 @@
     "test:ci": "npm run lint && npm run test:coverage && npm run build",
     "migrate": "node --import tsx src/cli/migrate.ts",
     "seed": "node --import tsx src/cli/seed.ts",
+    "verify:db": "node scripts/verify-local-postgres.mjs",
     "verify:db:local": "node scripts/verify-local-postgres.mjs"
   },
   "engines": {
