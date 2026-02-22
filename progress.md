@@ -9,7 +9,7 @@
 - Added initial redaction pipeline and integrated into ingest path.
 - Added focused unit tests and local run scripts.
 - Expanded to finish-ready MVP docs + quality gates:
-  - Added `QUEUE.md` with explicit definition-of-done and prioritized statuses.
+  - Added execution queue doc with explicit definition-of-done and prioritized statuses.
   - Added `RELEASE.md` release checklist + rollback notes.
   - Added CI workflow `.github/workflows/ci.yml` with lint + coverage-threshold tests + build.
   - Expanded test suite (unit/integration/smoke-style) across adapters/collectors/db/app/lib.
